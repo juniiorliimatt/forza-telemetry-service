@@ -57,6 +57,10 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 - **Só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição. Valores
   absolutos exigem a skill com esses dados. Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
   setup antigo contaminam a média. Aerodinâmica não tem sinal na telemetria (`NO_SIGNAL`).
+- **Marchas**: o jogo reporta ré como `0` e neutro/troca como `11` (comprovado em dados reais: 11 aparece em movimento
+  com acelerador solto). `Gears.isForward` (1–10) filtra isso no `SummaryCalculator`, no `TuningAggregator` e no
+  `TuningAdvisor` (resumos antigos já gravados trazem a chave "11"); sem o filtro a "última marcha" seria a 11 e a regra
+  de relação final nunca dispararia.
 - Regra nova = teste em `TuningAdvisorTest` primeiro (cada limiar tem mutação coberta).
 
 ## Nome do carro

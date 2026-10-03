@@ -91,6 +91,34 @@ class SummaryCalculatorTest {
     }
 
     @Test
+    void calculate_engine_ignoresNeutralAndReverseGears_theGameReportsNeutralAs11() {
+        final var rows = List.of(
+                sample().gear(3).rpm(6000f).build(),
+                sample().gear(3).rpm(6200f).build(),
+                sample().gear(11).rpm(6500f).accel(0).build(),
+                sample().gear(0).rpm(2000f).build());
+
+        final var gears = map(map(summarize(1, rows), "engine"), "gears");
+
+        assertThat(gears).containsOnlyKeys("3");
+        assertThat(map(gears, "3").get("timePct")).isEqualTo(100.0);
+    }
+
+    @Test
+    void calculate_traction_ignoresSamplesInNeutralOrReverse() {
+        final var rows = List.of(
+                sample().gear(11).accel(255).slipRatio(0f, 0f, 3f, 3f).build(),
+                sample().gear(0).accel(255).slipRatio(0f, 0f, 3f, 3f).build(),
+                sample().gear(2).accel(255).slipRatio(0f, 0f, 0f, 0f).build());
+
+        final var traction = map(summarize(1, rows), "traction");
+
+        assertThat(traction.get("samples")).isEqualTo(1);
+        assertThat(traction.get("drivenWheelSpinPct")).isEqualTo(0.0);
+        assertThat(map(traction, "spinPctByGear")).containsOnlyKeys("2");
+    }
+
+    @Test
     void calculate_cornerBalance_classifiesEntryUndersteerAndExitOversteer() {
         final var rows = List.of(
                 sample().steer(50).brake(100).slipAngle(0.8f, 0.8f, 0.2f, 0.2f).build(),

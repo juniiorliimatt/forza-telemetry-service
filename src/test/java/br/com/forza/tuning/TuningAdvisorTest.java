@@ -121,6 +121,17 @@ class TuningAdvisorTest {
     }
 
     @Test
+    void gearing_neutralReportedAs11_isNeverTheTopGear() {
+        // dados reais: o jogo reporta neutro como marcha 11; a última marcha de verdade é a 5
+        final var agg = with(b -> b.limiter(Map.of("2", 0.0, "3", 0.0, "4", 1.0, "5", 12.0, "11", 0.0)));
+
+        assertThat(guide(advisor.advise(agg, RWD).guides(), "cambio").suggestions()).anySatisfy(x -> {
+            assertThat(x.parameter()).containsIgnoringCase("final");
+            assertThat(x.evidence()).contains("5ª marcha");
+        });
+    }
+
+    @Test
     void gearing_rarelyReachingTheLimiter_isOk() {
         assertThat(guide(advisor.advise(healthy(), RWD).guides(), "cambio").status()).isEqualTo("OK");
     }

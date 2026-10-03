@@ -74,6 +74,18 @@ class TuningAggregatorTest {
     }
 
     @Test
+    void ignoresNeutralAndReverseGearsFromOlderStoredSummaries() {
+        final var gears = Map.of("3", new Gear(50.0, 6000, 2.0), "5", new Gear(40.0, 7000, 12.0), "11", new Gear(10.0, 6500, 0.0), "0", new Gear(1.0, 2000, 0.0));
+        final var s = new TuningSummaryDTO(1000, 50.0, susp(0), new SpeedKmh(200, 100), new Engine(8000, 500, 7000, 600, 5000, 10, gears), tires(190),
+                null, null, new Traction(300, 10.0, Map.of("1", 30.0, "11", 99.0, "0", 99.0)), null, 1.0);
+
+        final var agg = aggregator.aggregate(List.of(new TuningAggregator.SessionSummary(1000, s)));
+
+        assertThat(agg.limiterPctByGear()).containsOnlyKeys("3", "5");
+        assertThat(agg.spinPctByGear()).containsOnlyKeys("1");
+    }
+
+    @Test
     void keepsTheMaximumTopSpeed() {
         final var agg = aggregator.aggregate(List.of(
                 new TuningAggregator.SessionSummary(1000, summary(1000, 0, 190, 10, 100, 250)),

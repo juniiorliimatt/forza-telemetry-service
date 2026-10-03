@@ -2,6 +2,7 @@ package br.com.forza.tuning;
 
 import br.com.forza.models.dto.TuningSummaryDTO;
 import br.com.forza.models.dto.TuningSummaryDTO.CornerPhase;
+import br.com.forza.telemetry.Gears;
 import br.com.forza.tuning.TuningAggregate.Phase;
 import java.util.HashMap;
 import java.util.List;
@@ -92,13 +93,19 @@ public class TuningAggregator {
                 tractionSamples += s.traction().samples();
                 spin.add(s.traction().drivenWheelSpinPct(), s.traction().samples());
                 if (s.traction().spinPctByGear() != null) {
-                    s.traction().spinPctByGear().forEach((gear, pct) ->
-                            spinByGear.computeIfAbsent(gear, g -> new Weighted()).add(pct, s.traction().samples()));
+                    s.traction().spinPctByGear().forEach((gear, pct) -> {
+                        if (Gears.isForward(gear)) {
+                            spinByGear.computeIfAbsent(gear, g -> new Weighted()).add(pct, s.traction().samples());
+                        }
+                    });
                 }
             }
             if (s.engine() != null && s.engine().gears() != null) {
-                s.engine().gears().forEach((gear, stats) ->
-                        limiterByGear.computeIfAbsent(gear, g -> new Weighted()).add(stats.limiterWithThrottlePct(), w * stats.timePct() / 100.0));
+                s.engine().gears().forEach((gear, stats) -> {
+                    if (Gears.isForward(gear)) {
+                        limiterByGear.computeIfAbsent(gear, g -> new Weighted()).add(stats.limiterWithThrottlePct(), w * stats.timePct() / 100.0);
+                    }
+                });
             }
             if (s.speedKmh() != null) {
                 topSpeed = Math.max(topSpeed, s.speedKmh().max());

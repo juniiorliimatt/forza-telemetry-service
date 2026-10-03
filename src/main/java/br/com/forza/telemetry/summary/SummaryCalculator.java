@@ -3,6 +3,7 @@ package br.com.forza.telemetry.summary;
 import br.com.forza.models.entities.LapRecord;
 import br.com.forza.models.entities.SampleRow;
 import br.com.forza.models.entities.SessionMeta;
+import br.com.forza.telemetry.Gears;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -79,13 +80,15 @@ public class SummaryCalculator {
         final SampleRow peakTorque = rows.stream().max(Comparator.comparingDouble(SampleRow::torque)).orElseThrow();
         final double limiterRpm = 0.97 * meta.engineMaxRpm();
 
+        // ré (0) e neutro/troca (11) ficam de fora: não são marchas de tração (ver Gears)
+        final List<SampleRow> driving = moving.stream().filter(r -> Gears.isForward(r.gear())).toList();
         final Map<Integer, List<SampleRow>> byGear = new TreeMap<>();
-        for (final SampleRow r : moving) {
+        for (final SampleRow r : driving) {
             byGear.computeIfAbsent(r.gear(), g -> new ArrayList<>()).add(r);
         }
         final Map<String, Object> gears = new LinkedHashMap<>();
         byGear.forEach((gear, list) -> gears.put(String.valueOf(gear), map(
-                "timePct", pct(list.size(), moving.size()),
+                "timePct", pct(list.size(), driving.size()),
                 "rpmP50", round(percentile(list.stream().mapToDouble(SampleRow::rpm).toArray(), 0.5), 0),
                 "limiterWithThrottlePct", pct(list.stream().filter(r -> r.rpm() >= limiterRpm && r.accel() > 200).count(), list.size()))));
 
@@ -157,7 +160,7 @@ public class SummaryCalculator {
             case 1 -> new int[]{2, 3};
             default -> new int[]{0, 1, 2, 3};
         };
-        final List<SampleRow> sel = moving.stream().filter(r -> r.accel() > 200 && r.brake() < 20).toList();
+        final List<SampleRow> sel = moving.stream().filter(r -> Gears.isForward(r.gear()) && r.accel() > 200 && r.brake() < 20).toList();
         final Predicate<SampleRow> spinning = r -> {
             for (final int wheel : driven) {
                 if (Math.abs(r.slipRatio()[wheel]) > 1.0) {

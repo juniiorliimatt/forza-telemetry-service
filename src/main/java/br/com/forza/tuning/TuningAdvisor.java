@@ -2,6 +2,7 @@ package br.com.forza.tuning;
 
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningGuideDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningSuggestionDTO;
+import br.com.forza.telemetry.Gears;
 import br.com.forza.tuning.TuningAggregate.Phase;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -138,16 +139,22 @@ public class TuningAdvisor {
 
     private GuideDraft cambio(final TuningAggregate a) {
         final List<Draft> out = new ArrayList<>();
-        final boolean evaluated = !a.limiterPctByGear().isEmpty();
+        final Map<String, Double> limiter = new LinkedHashMap<>();
+        a.limiterPctByGear().forEach((gear, pct) -> {
+            if (Gears.isForward(gear)) {
+                limiter.put(gear, pct);
+            }
+        });
+        final boolean evaluated = !limiter.isEmpty();
         if (evaluated) {
-            final int top = a.limiterPctByGear().keySet().stream().mapToInt(Integer::parseInt).max().orElse(0);
-            final double topLimiter = a.limiterPctByGear().getOrDefault(String.valueOf(top), 0.0);
+            final int top = limiter.keySet().stream().mapToInt(Integer::parseInt).max().orElse(0);
+            final double topLimiter = limiter.getOrDefault(String.valueOf(top), 0.0);
             if (topLimiter > TOP_GEAR_LIMITER_PCT) {
                 out.add(new Draft("cambio", "Relação final (transmissão final)", "NONE", "DECREASE",
                         "Bater no limitador com acelerador na última marcha desperdiça tempo; uma final mais longa (valor numérico menor) só deixa o limitador para o fim da reta.",
                         topGearEvidence(top, topLimiter), 1.0 + (topLimiter - TOP_GEAR_LIMITER_PCT) / TOP_GEAR_LIMITER_PCT));
             }
-            a.limiterPctByGear().entrySet().stream()
+            limiter.entrySet().stream()
                     .filter(e -> Integer.parseInt(e.getKey()) != top && e.getValue() > MID_GEAR_LIMITER_PCT)
                     .max(Map.Entry.comparingByValue())
                     .ifPresent(e -> out.add(new Draft("cambio", "Relação da " + e.getKey() + "ª marcha", "NONE", "DECREASE",
