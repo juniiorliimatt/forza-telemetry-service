@@ -43,6 +43,14 @@ de dentro do container só se vê o IP docker, então o IP da LAN vem do `FORZA_
 detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
 `/{id}/samples`, `GET /api/v1/live/snapshot`.
 
+## Nome do carro
+O Data Out **não** traz o nome do carro, só `CarOrdinal`, classe, PI, tração e cilindros. `CarCatalog`
+traduz o ordinal em nome com catálogos por família de jogo (`car-catalog/horizon.json` e
+`motorsport.json`, gerados por `tools/build-car-catalog.py` — fontes/licenças em
+`car-catalog/README.md`): o mesmo ordinal pode ter nome/ano diferente entre jogos, então nunca se usa o
+catálogo de outra família (FM7 e Sled não têm). `carName` (nulo se desconhecido) vai em `SessionDTO` e
+`LiveSnapshotDTO`. Cobertura parcial: o resto aparece como `#ordinal` no front.
+
 ## Pipeline de ingestão — regras que não podem quebrar
 - **Recepção desacoplada**: a thread UDP só carimba o horário e **enfileira** (fila
   limitada, descarta se encher); decodificação e I/O de banco ficam no `IngestWorker`.
