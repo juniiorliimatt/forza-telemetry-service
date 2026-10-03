@@ -1,0 +1,37 @@
+image: eclipse-temurin:25-jdk-jammy
+
+stages:
+  - test
+  - build
+
+# docker:dind — os ITs com Testcontainers (Postgres descartável) precisam de um daemon
+# Docker acessível; a Testcontainers-java fala com a Docker Remote API via DOCKER_HOST
+# diretamente, então nada precisa ser instalado na imagem além dessa env var.
+default:
+  services:
+    - docker:dind
+
+test:
+  stage: test
+  script:
+    - chmod +x gradlew
+    - ./gradlew check test
+
+build:
+  stage: build
+  script:
+    - chmod +x gradlew
+    - ./gradlew clean build
+  artifacts:
+    paths:
+      - build/libs/*.jar
+    expire_in: 1 week
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  TESTCONTAINERS_RYUK_DISABLED: "true"  # container de limpeza do Testcontainers costuma travar em runners restritos
+
+# Sem contract-drift-check: generateOpenApiDocs sobe o app com profile dev e precisa de um
+# Postgres acessível. Regenerar o contrato à mão (./gradlew generateOpenApiDocs) ao mudar a API.
+# Sonar ainda não habilitado (ver budget-service como referência).
