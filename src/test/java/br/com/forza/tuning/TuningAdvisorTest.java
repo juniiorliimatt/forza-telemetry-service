@@ -268,6 +268,81 @@ class TuningAdvisorTest {
         assertThat(guide(advisor.advise(agg, RWD).guides(), "freios").status()).isEqualTo("NO_SIGNAL");
     }
 
+    // ---- Matriz da skill: equilíbrio de freio, diferencial central, 1ª–3ª e pressão traseira ----
+    @Test
+    void entryUndersteer_movesBrakeBalanceTowardTheRear_unlessTheRearAlreadyLocks() {
+        final var under = with(b -> b.phases(new Phase(700, 60.0, 4.0), new Phase(600, 10, 10), new Phase(600, 10, 10)));
+        final var underWithRearLock = with(b -> b.phases(new Phase(700, 60.0, 4.0), new Phase(600, 10, 10), new Phase(600, 10, 10)).braking(500, 1.0, 12.0));
+
+        assertThat(guide(advisor.advise(under, RWD).guides(), "freios").suggestions()).anySatisfy(x -> {
+            assertThat(x.parameter()).containsIgnoringCase("equilíbrio de freio");
+            assertThat(x.axle()).isEqualTo("REAR");
+            assertThat(x.evidence()).contains("60").contains("entrada");
+        });
+        assertThat(guide(advisor.advise(underWithRearLock, RWD).guides(), "freios").suggestions())
+                .noneSatisfy(x -> assertThat(x.axle()).isEqualTo("REAR"));
+    }
+
+    @Test
+    void entryOversteer_movesBrakeBalanceTowardTheFront_unlessTheFrontAlreadyLocks() {
+        final var over = with(b -> b.phases(new Phase(700, 4.0, 60.0), new Phase(600, 10, 10), new Phase(600, 10, 10)));
+        final var overWithFrontLock = with(b -> b.phases(new Phase(700, 4.0, 60.0), new Phase(600, 10, 10), new Phase(600, 10, 10)).braking(500, 14.0, 1.0));
+
+        assertThat(guide(advisor.advise(over, RWD).guides(), "freios").suggestions()).anySatisfy(x -> {
+            assertThat(x.parameter()).containsIgnoringCase("equilíbrio de freio");
+            assertThat(x.axle()).isEqualTo("FRONT");
+        });
+        assertThat(guide(advisor.advise(overWithFrontLock, RWD).guides(), "freios").suggestions())
+                .noneSatisfy(x -> assertThat(x.parameter()).containsIgnoringCase("equilíbrio"));
+    }
+
+    @Test
+    void exitUndersteerOnAwd_movesTheCenterDifferentialTowardTheRear_onlyOnAwd() {
+        final var agg = with(b -> b.phases(new Phase(600, 10, 10), new Phase(600, 10, 10), new Phase(650, 58.0, 3.0)));
+
+        assertThat(guide(advisor.advise(agg, AWD).guides(), "diferencial").suggestions()).anySatisfy(x -> {
+            assertThat(x.parameter()).containsIgnoringCase("diferencial central");
+            assertThat(x.axle()).isEqualTo("REAR");
+            assertThat(x.direction()).isEqualTo("INCREASE");
+        });
+        assertThat(guide(advisor.advise(agg, RWD).guides(), "diferencial").suggestions())
+                .noneSatisfy(x -> assertThat(x.parameter()).containsIgnoringCase("central"));
+        assertThat(guide(advisor.advise(agg, FWD).guides(), "diferencial").suggestions())
+                .noneSatisfy(x -> assertThat(x.parameter()).containsIgnoringCase("central"));
+    }
+
+    @Test
+    void exitOversteer_suggestsLongerFirstThreeGears_andLowerRearPressure() {
+        final var agg = with(b -> b.phases(new Phase(600, 10, 10), new Phase(600, 10, 10), new Phase(650, 3.0, 60.0)));
+        final var guides = advisor.advise(agg, RWD).guides();
+
+        assertThat(guide(guides, "cambio").suggestions()).anySatisfy(x -> {
+            assertThat(x.parameter()).containsIgnoringCase("1ª à 3ª");
+            assertThat(x.direction()).isEqualTo("DECREASE");
+            assertThat(x.evidence()).contains("60");
+        });
+        assertThat(guide(guides, "pneus").suggestions()).anySatisfy(x -> {
+            assertThat(x.axle()).isEqualTo("REAR");
+            assertThat(x.direction()).isEqualTo("DECREASE");
+            assertThat(x.parameter()).containsIgnoringCase("pressão");
+        });
+    }
+
+    @Test
+    void exitOversteer_doesNotContradictOrDuplicateTheTirePressureAdviceFromTemperatures() {
+        final var phases = new Phase(650, 3.0, 60.0);
+        final var coldRear = with(b -> b.tires(wheels(190.0, 190.0, 160.0, 160.0)).phases(new Phase(600, 10, 10), new Phase(600, 10, 10), phases));
+        final var hotRear = with(b -> b.tires(wheels(190.0, 190.0, 225.0, 225.0)).phases(new Phase(600, 10, 10), new Phase(600, 10, 10), phases));
+
+        final var cold = guide(advisor.advise(coldRear, RWD).guides(), "pneus").suggestions();
+        final var hot = guide(advisor.advise(hotRear, RWD).guides(), "pneus").suggestions();
+
+        assertThat(cold).hasSize(1);
+        assertThat(cold.get(0).direction()).isEqualTo("INCREASE");
+        assertThat(hot).hasSize(1);
+        assertThat(hot.get(0).direction()).isEqualTo("DECREASE");
+    }
+
     // ---- Diferencial ----
     @Test
     void wheelspinOnRwd_lowersTheRearDifferentialAcceleration() {

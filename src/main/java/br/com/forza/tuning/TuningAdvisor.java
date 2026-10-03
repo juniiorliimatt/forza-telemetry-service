@@ -100,11 +100,12 @@ public class TuningAdvisor {
     private GuideDraft pneus(final TuningAggregate a) {
         final List<Draft> out = new ArrayList<>();
         final boolean evaluated = a.tireTempF().size() == 4;
+        boolean rearFlagged = false;
         if (evaluated) {
             final double front = (a.tireTempF().get("FL") + a.tireTempF().get("FR")) / 2.0;
             final double rear = (a.tireTempF().get("RL") + a.tireTempF().get("RR")) / 2.0;
             final boolean frontFlagged = axleTemp(out, "pneus", "FRONT", "dianteiro", front);
-            final boolean rearFlagged = axleTemp(out, "pneus", "REAR", "traseiro", rear);
+            rearFlagged = axleTemp(out, "pneus", "REAR", "traseiro", rear);
             final double diff = Math.abs(front - rear);
             if (diff > AXLE_DIFF_F && !frontFlagged && !rearFlagged) {
                 final boolean frontHotter = front > rear;
@@ -114,7 +115,13 @@ public class TuningAdvisor {
                         1.0 + (diff - AXLE_DIFF_F) / AXLE_DIFF_F));
             }
         }
-        return new GuideDraft("pneus", "Pneus", evaluated, "Temperaturas dentro da janela de 170–210 °F e equilibradas entre os eixos.",
+        if (oversteer(a.exit()) && !rearFlagged) {
+            // matriz da skill: sobresterço na saída → pressão traseira ↓ (a regra por temperatura, se houver, já cobre o eixo)
+            out.add(new Draft("pneus", "Pressão dos pneus traseiros", "REAR", "DECREASE",
+                    "Sobresterço na saída: menos pressão nos pneus traseiros aumenta a área de contato e a tração ao acelerar.",
+                    balanceEvidence("saída de curva", "sobresterço", a.exit().oversteerPct(), a.exit().samples()), severity(a.exit().oversteerPct() - a.exit().understeerPct())));
+        }
+        return new GuideDraft("pneus", "Pneus", evaluated || !out.isEmpty(), "Temperaturas dentro da janela de 170–210 °F e equilibradas entre os eixos.",
                 "Sem temperatura de pneus nas sessões.",
                 List.of("O Data Out traz uma temperatura por pneu (não a face interna/externa), então a pressão é avaliada, a cambagem não."), out);
     }
@@ -162,7 +169,12 @@ public class TuningAdvisor {
                             "Limitador com acelerador na " + e.getKey() + "ª marcha: " + n(e.getValue()) + "% do tempo nela (máx. " + n(MID_GEAR_LIMITER_PCT) + "%)",
                             1.0 + (e.getValue() - MID_GEAR_LIMITER_PCT) / MID_GEAR_LIMITER_PCT)));
         }
-        return new GuideDraft("cambio", "Câmbio", evaluated, "O limitador raramente é atingido com o acelerador pressionado: relação final adequada.",
+        if (oversteer(a.exit())) {
+            out.add(new Draft("cambio", "Relações da 1ª à 3ª marcha (mais longas)", "NONE", "DECREASE",
+                    "Sobresterço na saída: marchas baixas mais longas reduzem o torque na roda e a tendência de a traseira escapar ao acelerar. Exige transmissão de corrida.",
+                    balanceEvidence("saída de curva", "sobresterço", a.exit().oversteerPct(), a.exit().samples()), severity(a.exit().oversteerPct() - a.exit().understeerPct())));
+        }
+        return new GuideDraft("cambio", "Câmbio", evaluated || !out.isEmpty(), "O limitador raramente é atingido com o acelerador pressionado: relação final adequada.",
                 "Sem dados de marchas nas sessões.",
                 List.of("Dado de relação por marcha só aparece como ajuste fino com transmissão de corrida instalada."), out);
     }
@@ -295,15 +307,30 @@ public class TuningAdvisor {
                         a.frontLockPct() / LOCK_PCT));
             }
             if (a.rearLockPct() > LOCK_PCT && !front) {
-                out.add(new Draft("freios", "Equilíbrio de freio (mais para a dianteira)", "FRONT", "INCREASE",
+                out.add(new Draft("freios", "Equilíbrio de freio", "FRONT", "INCREASE",
                         "Traseira travando sob frenagem forte: mover o equilíbrio para a dianteira estabiliza a frenagem.",
                         "Traseira travando em " + n(a.rearLockPct()) + "% das amostras de frenagem forte (n=" + a.brakingSamples() + "; limite " + n(LOCK_PCT) + "%)",
                         a.rearLockPct() / LOCK_PCT));
             }
         }
-        return new GuideDraft("freios", "Freios", evaluated, "Sem travamento de rodas relevante nas frenagens fortes.",
+        final boolean frontLocks = evaluated && a.frontLockPct() > LOCK_PCT;
+        final boolean rearLocks = evaluated && a.rearLockPct() > LOCK_PCT;
+        // matriz da skill, sem contradizer o travamento medido: subesterço na entrada → equilíbrio para trás (a menos que a
+        // traseira já trave); sobresterço na entrada → equilíbrio para a frente (a menos que a dianteira já trave).
+        if (understeer(a.entry()) && !rearLocks) {
+            out.add(new Draft("freios", "Equilíbrio de freio", "REAR", "INCREASE",
+                    "Subesterço na entrada (freando): mais freio atrás alivia a dianteira e faz o carro girar para dentro.",
+                    balanceEvidence("entrada de curva", "subesterço", a.entry().understeerPct(), a.entry().samples()), severity(a.entry().understeerPct() - a.entry().oversteerPct())));
+        }
+        if (oversteer(a.entry()) && !frontLocks) {
+            out.add(new Draft("freios", "Equilíbrio de freio", "FRONT", "INCREASE",
+                    "Sobresterço na entrada (freando): mais freio na frente estabiliza a traseira.",
+                    balanceEvidence("entrada de curva", "sobresterço", a.entry().oversteerPct(), a.entry().samples()), severity(a.entry().oversteerPct() - a.entry().understeerPct())));
+        }
+        return new GuideDraft("freios", "Freios", evaluated || !out.isEmpty(), "Sem travamento de rodas relevante nas frenagens fortes.",
                 "Poucas frenagens fortes registradas para avaliar os freios.",
-                List.of("Com ABS ligado o travamento quase não aparece; o sinal é mais forte com ABS desligado."), out);
+                List.of("Com ABS ligado o travamento quase não aparece; o sinal é mais forte com ABS desligado.",
+                        "O sentido do equilíbrio vem em palavras (dianteira/traseira): no FH5 o slider era invertido, no FH6 foi corrigido."), dedupe(out));
     }
 
     private GuideDraft diferencial(final TuningAggregate a, final int drivetrain) {
@@ -335,6 +362,11 @@ public class TuningAdvisor {
                         balanceEvidence("saída de curva", "subesterço", a.exit().understeerPct(), a.exit().samples()), severity(a.exit().understeerPct() - a.exit().oversteerPct())));
             }
         }
+        if (drivetrain == 2 && understeer(a.exit())) {
+            out.add(new Draft("diferencial", "Diferencial central (mais para a traseira)", "REAR", "INCREASE",
+                    "Subesterço na saída (AWD): mais torque para o eixo traseiro ajuda o carro a rotacionar ao acelerar.",
+                    balanceEvidence("saída de curva", "subesterço", a.exit().understeerPct(), a.exit().samples()), severity(a.exit().understeerPct() - a.exit().oversteerPct())));
+        }
         if (drivetrain == 1 && oversteer(a.exit())) {
             out.add(new Draft("diferencial", "Diferencial traseiro — aceleração", "REAR", "DECREASE",
                     "Sobresterço na saída (tração traseira): diferencial menos travado reduz a rotação ao acelerar.",
@@ -342,7 +374,7 @@ public class TuningAdvisor {
         }
         return new GuideDraft("diferencial", "Diferencial", evaluated, "Tração e balanço de entrada/saída equilibrados: diferencial atual atende.",
                 "Poucas amostras de aceleração/curva para avaliar o diferencial.",
-                List.of("Em AWD, o equilíbrio do diferencial central não tem sinal direto na telemetria."), dedupe(out));
+                List.of("Em AWD, o diferencial central só é sugerido pelo subesterço na saída; não há medição direta do torque entre eixos."), dedupe(out));
     }
 
     // ---------------------------------------------------------------- utilitários

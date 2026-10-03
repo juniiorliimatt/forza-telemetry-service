@@ -57,6 +57,12 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 - **Só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição. Valores
   absolutos exigem a skill com esses dados. Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
   setup antigo contaminam a média. Aerodinâmica não tem sinal na telemetria (`NO_SIGNAL`).
+- **Matriz da skill coberta**: além dos limiares, o advisor cobre equilíbrio de freio (subesterço na entrada → para a
+  traseira; sobresterço → para a dianteira, sem contradizer o travamento medido), diferencial central AWD (subesterço na
+  saída), 1ª–3ª mais longas e pressão traseira menor (sobresterço na saída, sem duplicar a regra de temperatura).
+  Equilíbrio de freio usa o **eixo** (`FRONT`/`REAR` = para onde mover), não `INCREASE/DECREASE`: no FH5 o slider era
+  invertido, no FH6 foi corrigido. **Pendentes (cobrar):** calibrar o limiar de travamento e a seleção do ciclo por
+  categoria da skill — ver a memória `forza-tuning-pending-calibration`.
 - **Marchas**: o jogo reporta ré como `0` e neutro/troca como `11` (comprovado em dados reais: 11 aparece em movimento
   com acelerador solto). `Gears.isForward` (1–10) filtra isso no `SummaryCalculator`, no `TuningAggregator` e no
   `TuningAdvisor` (resumos antigos já gravados trazem a chave "11"); sem o filtro a "última marcha" seria a 11 e a regra
