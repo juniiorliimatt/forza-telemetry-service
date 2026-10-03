@@ -38,7 +38,7 @@ class OpenApiContractTest {
     void readDtos_arePublishedAsSchemas() throws Exception {
         final var schemas = docs().at("/components/schemas");
 
-        for (final String name : List.of("SessionDTO", "SessionPageDTO", "LapDTO", "SampleDTO", "LiveSnapshotDTO", "LiveInfoDTO", "TuningSummaryDTO")) {
+        for (final String name : List.of("SessionDTO", "SessionPageDTO", "LapDTO", "SampleDTO", "LiveSnapshotDTO", "LiveInfoDTO", "TuningSummaryDTO", "TuningRecommendationDTO", "TuningCarDTO")) {
             assertThat(schemas.has(name)).as("schema %s", name).isTrue();
         }
     }
@@ -56,6 +56,9 @@ class OpenApiContractTest {
         final var paths = docs().get("paths");
 
         paths.fields().forEachRemaining(path -> {
+            if (path.getValue().get("get") == null) {
+                return; // só rotas GET (ex.: o POST de checkpoint responde 204)
+            }
             final var ok = path.getValue().at("/get/responses/200");
             assertThat(ok.isMissingNode()).as("200 de %s", path.getKey()).isFalse();
             assertThat(ok.at("/content").size()).as("corpo 200 de %s", path.getKey()).isPositive();

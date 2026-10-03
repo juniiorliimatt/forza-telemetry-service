@@ -58,6 +58,9 @@ class RepositoriesIT {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private TuningCheckpointRepository checkpoints;
+
     private SessionMeta newSession(final Instant startedAt) {
         final var base = Fixtures.session(UUID.randomUUID(), 2, null);
         return new SessionMeta(base.id(), base.gameFormat(), 1234, 5, 800, 2, 8, 8000f, 1000f, 77, startedAt, null, 0, null);
@@ -231,5 +234,62 @@ class RepositoriesIT {
 
         assertThat(laps.findBySession(meta.id())).extracting("lapNumber", "lapTimeS")
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(1, 60.0f), org.assertj.core.groups.Tuple.tuple(2, 61.25f));
+    }
+
+    private SessionMeta closedSession(final int car, final String format, final Instant startedAt, final String summaryJson) {
+        final var base = Fixtures.session(UUID.randomUUID(), 1, null);
+        final var meta = new SessionMeta(base.id(), format, car, 4, 800, 1, 8, 8000f, 1000f, null, startedAt, null, 0, null);
+        sessions.insert(meta);
+        sessions.close(meta.id(), startedAt.plusSeconds(60), 100, summaryJson);
+        return meta;
+    }
+
+    @Test
+    void tuning_findClosedForTuning_filtersByCarFormatSummaryAndCheckpoint_newestFirst_withLimit() {
+        jdbc.update("DELETE FROM forza.sessions");
+        final var base = Instant.parse("2026-11-01T10:00:00Z");
+        final var old = closedSession(3667, "FH4/FH5/FH6", base, "{\"samples\":1}");
+        final var mid = closedSession(3667, "FH4/FH5/FH6", base.plusSeconds(600), "{\"samples\":2}");
+        final var recent = closedSession(3667, "FH4/FH5/FH6", base.plusSeconds(1200), "{\"samples\":3}");
+        closedSession(3667, "FH4/FH5/FH6", base.plusSeconds(1800), null);                 // sem resumo
+        closedSession(3667, "FM2023-Dash", base.plusSeconds(1900), "{\"samples\":4}");   // outro jogo
+        closedSession(111, "FH4/FH5/FH6", base.plusSeconds(2000), "{\"samples\":5}");    // outro carro
+        sessions.insert(newSession(base.plusSeconds(2100)));                              // ativa
+
+        final var all = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, Instant.EPOCH, 10);
+        final var since = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, base.plusSeconds(300), 10);
+        final var limited = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, Instant.EPOCH, 2);
+
+        assertThat(all).extracting(SessionMeta::id).containsExactly(recent.id(), mid.id(), old.id());
+        assertThat(all.get(0).summaryJson()).contains("\"samples\"");
+        assertThat(since).extracting(SessionMeta::id).containsExactly(recent.id(), mid.id());
+        assertThat(limited).extracting(SessionMeta::id).containsExactly(recent.id(), mid.id());
+    }
+
+    @Test
+    void tuning_findClosedMeta_returnsClosedSessionsWithSummaryOfTheFormat_withoutTheHeavySummaryText() {
+        jdbc.update("DELETE FROM forza.sessions");
+        final var base = Instant.parse("2026-11-02T10:00:00Z");
+        final var a = closedSession(3667, "FH4/FH5/FH6", base, "{\"samples\":1}");
+        closedSession(3667, "FM2023-Dash", base.plusSeconds(60), "{\"samples\":1}");
+        closedSession(3667, "FH4/FH5/FH6", base.plusSeconds(120), null);
+
+        final var found = sessions.findClosedMeta("FH4/FH5/FH6");
+
+        assertThat(found).extracting(SessionMeta::id).containsExactly(a.id());
+        assertThat(found.get(0).summaryJson()).isNull();
+        assertThat(found.get(0).sampleCount()).isEqualTo(100);
+    }
+
+    @Test
+    void tuning_checkpoints_upsertAndFindPerCarAndFormat() {
+        assertThat(checkpoints.find("FH4/FH5/FH6", 777)).isEmpty();
+
+        checkpoints.upsert("FH4/FH5/FH6", 777, Instant.parse("2026-11-03T10:00:00Z"));
+        checkpoints.upsert("FH4/FH5/FH6", 777, Instant.parse("2026-11-04T10:00:00.123456Z"));
+
+        assertThat(checkpoints.find("FH4/FH5/FH6", 777)).contains(Instant.parse("2026-11-04T10:00:00.123456Z"));
+        assertThat(checkpoints.find("FM2023-Dash", 777)).isEmpty();
+        assertThat(checkpoints.find("FH4/FH5/FH6", 778)).isEmpty();
     }
 }

@@ -29,6 +29,9 @@ public class SessionRepository {
               FROM forza.sessions s
             """;
 
+    /** Mesmo SELECT sem o texto do resumo (pesado) — pra listagens que só precisam dos metadados. */
+    private static final String SELECT_NO_SUMMARY = SELECT.replace("s.summary::text AS summary", "NULL::text AS summary");
+
     private static final String ORDER = " ORDER BY s.started_at DESC, s.id DESC LIMIT ?";
 
     private static final RowMapper<SessionMeta> MAPPER = (rs, rowNum) -> {
@@ -81,6 +84,21 @@ public class SessionRepository {
 
     public Optional<SessionMeta> findById(final UUID id) {
         return jdbcTemplate.query(SELECT + " WHERE s.id = ?", MAPPER, id).stream().findFirst();
+    }
+
+    /**
+     * Sessões encerradas, com resumo gravado, de um carro/família de jogo iniciadas a partir de
+     * {@code since}, mais recentes primeiro — base da recomendação de tuning.
+     */
+    public List<SessionMeta> findClosedForTuning(final String gameFormat, final int carOrdinal, final Instant since, final int limit) {
+        return jdbcTemplate.query(SELECT + " WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.game_format = ? AND s.car_ordinal = ?"
+                + " AND s.started_at >= ? ORDER BY s.started_at DESC, s.id DESC LIMIT ?", MAPPER, gameFormat, carOrdinal, utc(since), limit);
+    }
+
+    /** Metadados (sem o texto do resumo) das sessões encerradas com resumo de uma família de jogo. */
+    public List<SessionMeta> findClosedMeta(final String gameFormat) {
+        return jdbcTemplate.query(SELECT_NO_SUMMARY + " WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.game_format = ?"
+                + " ORDER BY s.started_at DESC, s.id DESC", MAPPER, gameFormat);
     }
 
     /** Paginação keyset por (started_at, id) decrescente — sem OFFSET. {@code cursorStartedAt} nulo = primeira página. */
