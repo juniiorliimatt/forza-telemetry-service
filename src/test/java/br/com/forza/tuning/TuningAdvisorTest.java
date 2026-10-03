@@ -51,6 +51,63 @@ class TuningAdvisorTest {
         assertThat(guide(guides, "aerodinamica").notes()).isNotEmpty();
     }
 
+    // ---- Quantidade do ajuste (passo) ----
+    private static List<br.com.forza.tuning.TuningAggregate> scenarios() {
+        final var under = new Phase(700, 60.0, 4.0);
+        final var over = new Phase(700, 4.0, 60.0);
+        final var neutral = new Phase(600, 10, 10);
+        return List.of(
+                with(b -> b.tires(wheels(160.0, 160.0, 225.0, 225.0)).phases(under, under, under).braking(500, 14.0, 12.0)
+                        .traction(400, 30.0, Map.of("1", 40.0, "2", 30.0)).limiter(Map.of("2", 0.0, "3", 0.0, "5", 12.0))),
+                with(b -> b.tires(wheels(220.0, 220.0, 150.0, 150.0)).phases(over, over, over).braking(500, 1.0, 14.0)
+                        .traction(400, 30.0, Map.of("1", 40.0)).limiter(Map.of("2", 0.0, "5", 12.0, "4", 20.0))),
+                with(b -> b.bottoming(Map.of("FL", 9.0, "FR", 9.0, "RL", 8.0, "RR", 8.0)).phases(neutral, neutral, over)),
+                with(b -> b.phases(under, neutral, under)),
+                with(b -> b.phases(over, neutral, neutral)));
+    }
+
+    @Test
+    void everySuggestion_comesWithTheSizeOfTheAdjustment_inTheUnitTheGameShows() {
+        for (final int drivetrain : new int[]{FWD, RWD, AWD}) {
+            for (final var aggregate : scenarios()) {
+                final var advice = advisor.advise(aggregate, drivetrain);
+                final var suggestions = all(advice.guides());
+                assertThat(suggestions).isNotEmpty();
+                assertThat(suggestions).allSatisfy(x -> {
+                    assertThat(x.amount()).as("quantidade de '%s'", x.parameter()).isNotNull().isPositive();
+                    assertThat(x.unit()).as("unidade de '%s'", x.parameter()).isNotBlank();
+                    assertThat(x.magnitude()).as("tamanho de '%s'", x.parameter()).isIn("SMALL", "MEDIUM", "LARGE");
+                });
+                assertThat(advice.thisCycle()).allSatisfy(x -> assertThat(x.amount()).isNotNull().isPositive());
+            }
+        }
+    }
+
+    @Test
+    void theStepOfTheSameSuggestion_isTheSameInTheGuideAndInTheCycle() {
+        final var advice = advisor.advise(scenarios().get(0), RWD);
+
+        for (final var cycle : advice.thisCycle()) {
+            final var inGuide = guide(advice.guides(), cycle.guide()).suggestions().stream()
+                    .filter(x -> x.parameter().equals(cycle.parameter()) && x.axle().equals(cycle.axle())).findFirst().orElseThrow();
+            assertThat(inGuide.amount()).isEqualTo(cycle.amount());
+            assertThat(inGuide.unit()).isEqualTo(cycle.unit());
+        }
+    }
+
+    @Test
+    void aMoreSevereSymptom_getsABiggerStep() {
+        final var mild = with(b -> b.phases(new Phase(600, 10, 10), new Phase(700, 42.0, 18.0), new Phase(600, 10, 10)));      // diferença 24 pts
+        final var severe = with(b -> b.phases(new Phase(600, 10, 10), new Phase(700, 85.0, 5.0), new Phase(600, 10, 10)));      // diferença 80 pts
+
+        final var small = all(advisor.advise(mild, RWD).guides()).stream().filter(x -> x.parameter().contains("Barra dianteira")).findFirst().orElseThrow();
+        final var big = all(advisor.advise(severe, RWD).guides()).stream().filter(x -> x.parameter().contains("Barra dianteira")).findFirst().orElseThrow();
+
+        assertThat(small.magnitude()).isEqualTo("SMALL");
+        assertThat(big.magnitude()).isEqualTo("LARGE");
+        assertThat(big.amount()).isGreaterThan(small.amount());
+    }
+
     // ---- Pneus ----
     @Test
     void tires_coldFrontAxle_raisesFrontPressure() {

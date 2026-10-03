@@ -82,7 +82,7 @@ class TuningControllerTest {
 
     @Test
     void recommendation_returnsGuidesAndTheCycle() throws Exception {
-        final var suggestion = new TuningSuggestionDTO(1, true, "molas", "Altura do solo traseira", "REAR", "INCREASE", "porque", "7% no fundo");
+        final var suggestion = new TuningSuggestionDTO(1, true, "molas", "Altura do solo traseira", "REAR", "INCREASE", "porque", "7% no fundo", 0.5, "cm", "SMALL");
         final var guide = new TuningGuideDTO("molas", "Molas", "ADJUST", "1 ajuste sugerido", List.of("nota"), List.of(suggestion));
         when(tuningService.recommendation(3667, PerformanceClass.S2)).thenReturn(new TuningRecommendationDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD",
                 new TuningReadinessDTO(true, 12, 10, 12000, 6000, List.of()), Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-10T00:00:00Z"), null,
@@ -94,7 +94,10 @@ class TuningControllerTest {
                 .andExpect(jsonPath("$.readiness.ready").value(true))
                 .andExpect(jsonPath("$.guides[0].id").value("molas"))
                 .andExpect(jsonPath("$.guides[0].suggestions[0].direction").value("INCREASE"))
-                .andExpect(jsonPath("$.thisCycle[0].parameter").value("Altura do solo traseira"));
+                .andExpect(jsonPath("$.thisCycle[0].parameter").value("Altura do solo traseira"))
+                .andExpect(jsonPath("$.thisCycle[0].amount").value(0.5))
+                .andExpect(jsonPath("$.thisCycle[0].unit").value("cm"))
+                .andExpect(jsonPath("$.thisCycle[0].magnitude").value("SMALL"));
     }
 
     @Test

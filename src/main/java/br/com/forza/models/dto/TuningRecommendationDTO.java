@@ -47,6 +47,10 @@ public record TuningRecommendationDTO(int carOrdinal,
     /**
      * @param axle FRONT, REAR, BOTH ou NONE
      * @param direction INCREASE ou DECREASE (do valor numérico que o jogo exibe)
+     * @param amount tamanho do passo deste ciclo (não o valor final: o Data Out não traz o setup atual), na unidade {@code unit}
+     *               — nulo em fotos salvas antes dessa informação existir
+     * @param unit unidade que o jogo mostra (bar, °, pontos, cm, pontos percentuais, % do curso do slider, na relação)
+     * @param magnitude SMALL, MEDIUM ou LARGE, conforme a severidade do sintoma
      */
     public record TuningSuggestionDTO(int priority,
                                       boolean thisCycle,
@@ -55,6 +59,9 @@ public record TuningRecommendationDTO(int carOrdinal,
                                       String axle,
                                       String direction,
                                       String rationale,
-                                      String evidence) {
+                                      String evidence,
+                                      Double amount,
+                                      String unit,
+                                      String magnitude) {
     }
 }

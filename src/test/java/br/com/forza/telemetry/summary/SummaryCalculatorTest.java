@@ -162,10 +162,28 @@ class SummaryCalculatorTest {
     @Test
     void calculate_braking_countsFrontAndRearLockupsOnlyUnderHardBraking() {
         final var rows = List.of(
-                sample().brake(200).slipRatio(1.5f, 0f, 0f, 0f).build(),
-                sample().brake(200).slipRatio(0f, 0f, 0f, -2f).build(),
+                sample().brake(200).slipRatio(2.5f, 0f, 0f, 0f).build(),
+                sample().brake(200).slipRatio(0f, 0f, 0f, -3f).build(),
                 sample().brake(200).build(),
                 sample().brake(100).slipRatio(3f, 3f, 3f, 3f).build());
+
+        final var braking = map(summarize(1, rows), "braking");
+
+        assertThat(braking.get("samples")).isEqualTo(3);
+        assertThat(braking.get("frontLockPct")).isEqualTo(33.3);
+        assertThat(braking.get("rearLockPct")).isEqualTo(33.3);
+    }
+
+    /**
+     * Dados reais: com limiar 1.0 a dianteira "travava" em 13–62% das frenagens fortes de qualquer carro, porque apertar todo
+     * o gatilho já passa de 1.0. Só slip ratio acima de 2.0 conta como travamento (a roda deslizando bem mais que girando).
+     */
+    @Test
+    void calculate_braking_aHardPedalPressWithModerateSlip_isNotALockup() {
+        final var rows = List.of(
+                sample().brake(255).slipRatio(1.2f, 1.2f, 1.9f, 1.9f).build(),
+                sample().brake(255).slipRatio(2.0f, 2.0f, 2.0f, 2.0f).build(),     // exatamente 2.0 ainda não é travamento
+                sample().brake(255).slipRatio(2.01f, 0f, 2.01f, 0f).build());
 
         final var braking = map(summarize(1, rows), "braking");
 

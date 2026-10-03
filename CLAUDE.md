@@ -67,8 +67,16 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   traseira; sobresterço → para a dianteira, sem contradizer o travamento medido), diferencial central AWD (subesterço na
   saída), 1ª–3ª mais longas e pressão traseira menor (sobresterço na saída, sem duplicar a regra de temperatura).
   Equilíbrio de freio usa o **eixo** (`FRONT`/`REAR` = para onde mover), não `INCREASE/DECREASE`: no FH5 o slider era
-  invertido, no FH6 foi corrigido. **Pendentes (cobrar):** calibrar o limiar de travamento e a seleção do ciclo por
-  categoria da skill — ver a memória `forza-tuning-pending-calibration`.
+  invertido, no FH6 foi corrigido. **Travamento de freio** = `|slip ratio| > 2.0` com freio > 150 (`BRAKE_LOCK_SLIP_RATIO`; era
+  1.0, que dava 13–62% de "travamento" em qualquer carro — apertar todo o gatilho já passa de 1.0); resumos antigos usam o
+  critério antigo e saem da janela conforme a coleta reinicia. **Pendente (cobrar):** a seleção do ciclo por categoria da skill
+  — ver a memória `forza-tuning-pending-calibration`.
+- **Quantidade do ajuste** (`StepCatalog`): o Data Out não traz o setup atual nem o curso dos sliders (e o forzahorizonhub
+  confirma que não lista valores stock por carro), então cada sugestão traz `amount`/`unit`/`magnitude` = **tamanho do passo
+  deste ciclo**, não o valor final: pneus 0,1 bar · cambagem 0,2° · convergência 0,1° · barras 2 pontos · molas 5% do curso do
+  slider (varia por carro) · altura 0,5 cm · amortecimento 1 ponto · freio (pressão 5 / equilíbrio 1) e diferencial 5 pontos
+  percentuais · relações 0,1. Cresce com a severidade (SMALL ×1 < 1,5 ≤ MEDIUM ×2 < 2,5 ≤ LARGE ×3). Parâmetro desconhecido
+  → sem número (nunca inventado). Valores absolutos exigiriam peso/distribuição informados (modelo de frequência natural).
 - **Marchas**: o jogo reporta ré como `0` e neutro/troca como `11` (comprovado em dados reais: 11 aparece em movimento
   com acelerador solto). `Gears.isForward` (1–10) filtra isso no `SummaryCalculator`, no `TuningAggregator` e no
   `TuningAdvisor` (resumos antigos já gravados trazem a chave "11"); sem o filtro a "última marcha" seria a 11 e a regra

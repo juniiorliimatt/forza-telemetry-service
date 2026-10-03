@@ -830,6 +830,9 @@ components:
     TuningSuggestionDTO:
       type: object
       properties:
+        amount:
+          type: number
+          format: double
         axle:
           type: string
         direction:
@@ -837,6 +840,8 @@ components:
         evidence:
           type: string
         guide:
+          type: string
+        magnitude:
           type: string
         parameter:
           type: string
@@ -847,6 +852,8 @@ components:
           type: string
         thisCycle:
           type: boolean
+        unit:
+          type: string
     TuningSummaryDTO:
       type: object
       description: Resumo de tuning de uma sessão

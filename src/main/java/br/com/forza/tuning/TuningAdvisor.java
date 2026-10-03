@@ -92,7 +92,10 @@ public class TuningAdvisor {
     }
 
     private static TuningSuggestionDTO toDto(final Draft d, final int priority, final boolean thisCycle) {
-        return new TuningSuggestionDTO(priority, thisCycle, d.guide(), d.parameter(), d.axle(), d.direction(), d.rationale(), d.evidence());
+        final var step = StepCatalog.stepFor(d.parameter(), d.severity());
+        return new TuningSuggestionDTO(priority, thisCycle, d.guide(), d.parameter(), d.axle(), d.direction(), d.rationale(), d.evidence(),
+                step.map(StepCatalog.Step::amount).orElse(null), step.map(StepCatalog.Step::unit).orElse(null),
+                step.map(StepCatalog.Step::magnitude).orElse(null));
     }
 
     // ---------------------------------------------------------------- guias

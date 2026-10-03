@@ -31,6 +31,12 @@ public class SummaryCalculator {
     private static final double SUSPENSION_BOTTOMING = 0.98;
     private static final double SUSPENSION_TOPPING = 0.02;
     private static final double BALANCE_THRESHOLD = 0.15;
+    /**
+     * Travamento sob frenagem forte = |slip ratio| acima disto. Era 1.0, mas em dados reais isso dava 13–62% de "travamento"
+     * na dianteira de qualquer carro (apertar todo o gatilho já passa de 1.0); com 2.0 a medida passou a variar por carro.
+     * Resumos gravados antes dessa mudança usam o critério antigo — saem da janela do tuning conforme a coleta é reiniciada.
+     */
+    private static final double BRAKE_LOCK_SLIP_RATIO = 2.0;
     private static final double WATTS_PER_HP = 745.7;
 
     public Map<String, Object> calculate(final SessionMeta meta, final List<SampleRow> rows, final List<LapRecord> laps) {
@@ -149,8 +155,8 @@ public class SummaryCalculator {
 
     private Map<String, Object> braking(final List<SampleRow> moving) {
         final List<SampleRow> sel = moving.stream().filter(r -> r.brake() > 150).toList();
-        final long front = sel.stream().filter(r -> Math.max(Math.abs(r.slipRatio()[0]), Math.abs(r.slipRatio()[1])) > 1.0).count();
-        final long rear = sel.stream().filter(r -> Math.max(Math.abs(r.slipRatio()[2]), Math.abs(r.slipRatio()[3])) > 1.0).count();
+        final long front = sel.stream().filter(r -> Math.max(Math.abs(r.slipRatio()[0]), Math.abs(r.slipRatio()[1])) > BRAKE_LOCK_SLIP_RATIO).count();
+        final long rear = sel.stream().filter(r -> Math.max(Math.abs(r.slipRatio()[2]), Math.abs(r.slipRatio()[3])) > BRAKE_LOCK_SLIP_RATIO).count();
         return map("samples", sel.size(), "frontLockPct", pct(front, sel.size()), "rearLockPct", pct(rear, sel.size()));
     }
 
