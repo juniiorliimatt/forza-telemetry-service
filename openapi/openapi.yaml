@@ -21,6 +21,12 @@ paths:
     get:
       operationId: snapshot
       responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/LiveSnapshotDTO"
+          description: Último pacote recebido
         "404":
           content:
             application/problem+json: {}
@@ -44,6 +50,12 @@ paths:
           format: int32
           default: 20
       responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SessionPageDTO"
+          description: Página de sessões
         "400":
           content:
             application/problem+json: {}
@@ -61,6 +73,12 @@ paths:
           type: string
           format: uuid
       responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SessionDTO"
+          description: Metadados da sessão
         "404":
           content:
             application/problem+json: {}
@@ -270,6 +288,77 @@ components:
         udpPort:
           type: integer
           format: int32
+    LiveSnapshotDTO:
+      type: object
+      properties:
+        accel:
+          type: integer
+          format: int32
+        bestLapS:
+          type: number
+          format: float
+        brake:
+          type: integer
+          format: int32
+        carName:
+          type: string
+        carOrdinal:
+          type: integer
+          format: int32
+        combinedSlip:
+          type: array
+          items:
+            type: number
+            format: float
+        currentLapS:
+          type: number
+          format: float
+        engineMaxRpm:
+          type: number
+          format: float
+        gameFormat:
+          type: string
+        gear:
+          type: integer
+          format: int32
+        lapNumber:
+          type: integer
+          format: int32
+        lastLapS:
+          type: number
+          format: float
+        performanceIndex:
+          type: integer
+          format: int32
+        raceOn:
+          type: boolean
+        receivedAt:
+          type: string
+          format: date-time
+        rpm:
+          type: number
+          format: float
+        slipAngle:
+          type: array
+          items:
+            type: number
+            format: float
+        speedKmh:
+          type: number
+          format: float
+        steer:
+          type: integer
+          format: int32
+        suspension:
+          type: array
+          items:
+            type: number
+            format: float
+        tireTempF:
+          type: array
+          items:
+            type: number
+            format: float
     SampleDTO:
       type: object
       properties:
@@ -350,6 +439,53 @@ components:
         torque:
           type: number
           format: float
+    SessionDTO:
+      type: object
+      properties:
+        active:
+          type: boolean
+        carClass:
+          type: integer
+          format: int32
+        carName:
+          type: string
+        carOrdinal:
+          type: integer
+          format: int32
+        cylinders:
+          type: integer
+          format: int32
+        drivetrain:
+          type: string
+        endedAt:
+          type: string
+          format: date-time
+        gameFormat:
+          type: string
+        id:
+          type: string
+          format: uuid
+        performanceIndex:
+          type: integer
+          format: int32
+        sampleCount:
+          type: integer
+          format: int32
+        startedAt:
+          type: string
+          format: date-time
+        trackOrdinal:
+          type: integer
+          format: int32
+    SessionPageDTO:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionDTO"
+        nextCursor:
+          type: string
     SpeedKmh:
       type: object
       properties:

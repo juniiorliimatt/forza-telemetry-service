@@ -35,6 +35,8 @@ public class SessionController {
 
     /** Mais recentes primeiro, paginação por cursor opaco ({@code nextCursor} da página anterior). */
     @GetMapping
+    @ApiResponse(responseCode = "200", description = "Página de sessões",
+            content = @Content(schema = @Schema(implementation = SessionPageDTO.class)))
     @ApiResponse(responseCode = "400", description = "Cursor inválido", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<SessionPageDTO> list(@RequestParam(required = false) final String cursor,
                                                @RequestParam(defaultValue = "20") final int size) {
@@ -42,6 +44,8 @@ public class SessionController {
     }
 
     @GetMapping("/{id}")
+    @ApiResponse(responseCode = "200", description = "Metadados da sessão",
+            content = @Content(schema = @Schema(implementation = SessionDTO.class)))
     @ApiResponse(responseCode = "404", description = "Sessão não encontrada", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<SessionDTO> findById(@PathVariable final UUID id) {
         return ResponseEntity.ok(sessionQueryService.get(id));

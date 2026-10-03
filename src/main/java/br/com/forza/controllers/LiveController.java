@@ -8,6 +8,7 @@ import br.com.forza.telemetry.CarCatalog;
 import br.com.forza.telemetry.ingest.LiveSnapshot;
 import br.com.forza.telemetry.packet.TelemetryPacket;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.util.Arrays;
 import java.util.List;
@@ -47,6 +48,8 @@ public class LiveController {
 
     /** Último pacote recebido; 404 se nada chegou nos últimos {@code telemetry.live-stale-after}. */
     @GetMapping("/snapshot")
+    @ApiResponse(responseCode = "200", description = "Último pacote recebido",
+            content = @Content(schema = @Schema(implementation = LiveSnapshotDTO.class)))
     @ApiResponse(responseCode = "404", description = "Nenhum pacote recente", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<LiveSnapshotDTO> snapshot() {
         final LiveSnapshot.Reading reading = liveSnapshot.current(properties.liveStaleAfter())
