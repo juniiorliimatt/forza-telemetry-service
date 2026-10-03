@@ -8,5 +8,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * tempo não entra na regra) e olha só as {@code maxSessions} mais recentes, pra setups antigos saírem da janela.
  */
 @ConfigurationProperties(prefix = "tuning")
-public record TuningProperties(int minSessions, long minSamples, int maxSessions) {
+public record TuningProperties(int minSessions, long minSamples, int maxSessions, int sessionSamples) {
 }

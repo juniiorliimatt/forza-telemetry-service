@@ -287,6 +287,18 @@ paths:
       - tuning-controller
 components:
   schemas:
+    ActiveSessionDTO:
+      type: object
+      properties:
+        samples:
+          type: integer
+          format: int32
+        startedAt:
+          type: string
+          format: date-time
+        targetSamples:
+          type: integer
+          format: int32
     Braking:
       type: object
       properties:
@@ -654,6 +666,8 @@ components:
     TuningCarDTO:
       type: object
       properties:
+        activeSession:
+          $ref: "#/components/schemas/ActiveSessionDTO"
         carClass:
           type: integer
           format: int32
@@ -674,6 +688,9 @@ components:
           format: int32
         ready:
           type: boolean
+        requiredSamples:
+          type: integer
+          format: int64
         requiredSessions:
           type: integer
           format: int32

@@ -99,6 +99,12 @@ public class SessionRepository {
                 performanceClass.minPi(), performanceClass.maxPi(), utc(since), limit);
     }
 
+    /** Sessões em andamento (sem {@code ended_at}) de uma família de jogo, com a contagem de amostras ao vivo e sem o resumo. */
+    public List<SessionMeta> findActiveMeta(final String gameFormat) {
+        return jdbcTemplate.query(SELECT_NO_SUMMARY + " WHERE s.ended_at IS NULL AND s.game_format = ? ORDER BY s.started_at DESC, s.id DESC",
+                MAPPER, gameFormat);
+    }
+
     /** Metadados (sem o texto do resumo) das sessões encerradas com resumo de uma família de jogo. */
     public List<SessionMeta> findClosedMeta(final String gameFormat) {
         return jdbcTemplate.query(SELECT_NO_SUMMARY + " WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.game_format = ?"

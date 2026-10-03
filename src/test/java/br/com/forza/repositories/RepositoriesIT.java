@@ -275,6 +275,25 @@ class RepositoriesIT {
     }
 
     @Test
+    void tuning_findActiveMeta_returnsOnlyOpenSessionsOfTheFormat_withTheLiveSampleCount() {
+        jdbc.update("DELETE FROM forza.sessions");
+        final var base = Instant.parse("2026-11-06T10:00:00Z");
+        final var open = newSession(base);
+        sessions.insert(open);
+        samples.batchInsert(open.id(), List.of(sample().tMs(0).build(), sample().tMs(50).build(), sample().tMs(100).build()));
+        closedSession(1234, "FH4/FH5/FH6", base.plusSeconds(600), "{\"samples\":1}");                  // já encerrada
+        final var otherGame = newSession(base.plusSeconds(1200));
+        sessions.insert(new SessionMeta(otherGame.id(), "FM2023-Dash", 1234, 5, 800, 2, 8, 8000f, 1000f, 77, otherGame.startedAt(), null, 0, null));   // outro jogo
+
+        final var active = sessions.findActiveMeta("FH4/FH5/FH6");
+
+        assertThat(active).extracting(SessionMeta::id).containsExactly(open.id());
+        assertThat(active.get(0).sampleCount()).isEqualTo(3);
+        assertThat(active.get(0).endedAt()).isNull();
+        assertThat(active.get(0).summaryJson()).isNull();
+    }
+
+    @Test
     void tuning_findClosedForTuning_separatesBuildsByPerformanceClass_boundariesIncluded() {
         jdbc.update("DELETE FROM forza.sessions");
         final var base = Instant.parse("2026-11-05T10:00:00Z");

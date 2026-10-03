@@ -54,7 +54,7 @@ class TuningServiceTest {
     private final SessionRepository sessions = mock(SessionRepository.class);
     private final TuningCheckpointRepository checkpoints = mock(TuningCheckpointRepository.class);
     private final TuningHistoryRepository history = mock(TuningHistoryRepository.class);
-    private final TuningProperties properties = new TuningProperties(10, 6000, 20);
+    private final TuningProperties properties = new TuningProperties(10, 6000, 20, 5000);
     private final TuningService service = new TuningService(sessions, checkpoints, history, new TuningAggregator(), new TuningAdvisor(),
             new CarCatalog(mapper), mapper, properties, Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -351,6 +351,78 @@ class TuningServiceTest {
         assertThat(c.sessions()).isEqualTo(2);
         assertThat(c.samples()).isEqualTo(1000);
         assertThat(c.performanceIndex()).isEqualTo(416);
+    }
+
+    private SessionMeta openSession(final int car, final int pi, final int startedMinutesAgo, final int samplesSoFar) {
+        final var start = NOW.minusSeconds(startedMinutesAgo * 60L);
+        return new SessionMeta(UUID.randomUUID(), HORIZON, car, 3, pi, 1, 8, 8000f, 1000f, null, start, null, samplesSoFar, null);
+    }
+
+    @Test
+    void cars_showsTheSessionInProgress_withLiveSamplesAndTheTarget() throws Exception {
+        final var all = new ArrayList<SessionMeta>();
+        for (int i = 1; i <= 3; i++) {
+            all.add(metaWithPi(1105, 700, i + 10, 1000));
+        }
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(all);
+        when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(openSession(1105, 700, 1, 2340)));
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
+
+        final var car = service.cars().get(0);
+
+        assertThat(car.sessions()).as("a sessão aberta ainda não conta").isEqualTo(3);
+        assertThat(car.samples()).isEqualTo(3000);
+        assertThat(car.requiredSamples()).isEqualTo(6000);
+        assertThat(car.activeSession()).isNotNull();
+        assertThat(car.activeSession().samples()).isEqualTo(2340);
+        assertThat(car.activeSession().targetSamples()).isEqualTo(5000);
+        assertThat(car.activeSession().startedAt()).isEqualTo(NOW.minusSeconds(60));
+    }
+
+    @Test
+    void cars_withoutAnOpenSession_hasNoActiveSession() throws Exception {
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(List.of(metaWithPi(1105, 700, 1, 1000)));
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
+
+        assertThat(service.cars().get(0).activeSession()).isNull();
+    }
+
+    @Test
+    void cars_aCarWithOnlyAnOpenSession_stillAppearsWithZeroProgress() {
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(List.of());
+        when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(openSession(1105, 700, 1, 800)));
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
+
+        final var cars = service.cars();
+
+        assertThat(cars).hasSize(1);
+        assertThat(cars.get(0).carName()).isEqualTo("1964 Aston Martin DB5 Vantage");
+        assertThat(cars.get(0).performanceClass()).isEqualTo("A");
+        assertThat(cars.get(0).sessions()).isZero();
+        assertThat(cars.get(0).samples()).isZero();
+        assertThat(cars.get(0).ready()).isFalse();
+        assertThat(cars.get(0).activeSession().samples()).isEqualTo(800);
+    }
+
+    @Test
+    void cars_anOpenSessionStartedBeforeTheCheckpoint_isIgnored() {
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(List.of());
+        when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(openSession(1105, 700, 10, 800)));
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.of(NOW.minusSeconds(60)));   // marco depois do início
+
+        assertThat(service.cars()).isEmpty();
+    }
+
+    @Test
+    void cars_theOpenSessionBelongsToItsOwnPerformanceClass() throws Exception {
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(List.of(metaWithPi(1105, 700, 5, 1000), metaWithPi(1105, 416, 6, 1000)));
+        when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(openSession(1105, 416, 1, 300)));
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
+
+        final var cars = service.cars();
+
+        assertThat(cars.stream().filter(c -> "A".equals(c.performanceClass())).findFirst().orElseThrow().activeSession()).isNull();
+        assertThat(cars.stream().filter(c -> "C".equals(c.performanceClass())).findFirst().orElseThrow().activeSession().samples()).isEqualTo(300);
     }
 
     @Test

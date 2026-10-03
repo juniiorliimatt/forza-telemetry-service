@@ -23,9 +23,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -75,25 +77,45 @@ public class TuningService {
     private record CarBuild(int carOrdinal, PerformanceClass performanceClass) {
     }
 
-    /** Carros por classe de PI com sessões coletadas (depois do marco de cada um) e o progresso até poder recomendar. */
+    private static CarBuild buildOf(final SessionMeta meta) {
+        return new CarBuild(meta.carOrdinal(), PerformanceClass.of(meta.performanceIndex()));
+    }
+
+    /**
+     * Carros por classe de PI com sessões coletadas (depois do marco de cada um) e o progresso até poder recomendar.
+     * A sessão em andamento aparece à parte ({@code activeSession}) e não entra no progresso até fechar; um carro só
+     * com sessão em andamento também é listado (progresso zero).
+     */
     public List<TuningCarDTO> cars() {
-        final Map<CarBuild, List<SessionMeta>> byBuild = new LinkedHashMap<>();
+        final Map<CarBuild, List<SessionMeta>> closedByBuild = new LinkedHashMap<>();
         for (final SessionMeta meta : sessionRepository.findClosedMeta(GAME_FORMAT)) {
-            byBuild.computeIfAbsent(new CarBuild(meta.carOrdinal(), PerformanceClass.of(meta.performanceIndex())), k -> new ArrayList<>()).add(meta);
+            closedByBuild.computeIfAbsent(buildOf(meta), k -> new ArrayList<>()).add(meta);
         }
+        final Map<CarBuild, SessionMeta> activeByBuild = new LinkedHashMap<>();
+        for (final SessionMeta meta : sessionRepository.findActiveMeta(GAME_FORMAT)) {
+            activeByBuild.putIfAbsent(buildOf(meta), meta);   // vem da mais recente para a mais antiga
+        }
+        final Set<CarBuild> builds = new LinkedHashSet<>(closedByBuild.keySet());
+        builds.addAll(activeByBuild.keySet());
+
         final List<TuningCarDTO> cars = new ArrayList<>();
-        byBuild.forEach((build, all) -> {
+        for (final CarBuild build : builds) {
             final Instant since = checkpointRepository.find(GAME_FORMAT, build.carOrdinal(), build.performanceClass()).orElse(Instant.EPOCH);
-            final List<SessionMeta> window = all.stream().filter(s -> !s.startedAt().isBefore(since)).limit(properties.maxSessions()).toList();
-            if (window.isEmpty()) {
-                return;
+            final List<SessionMeta> window = closedByBuild.getOrDefault(build, List.of()).stream()
+                    .filter(s -> !s.startedAt().isBefore(since)).limit(properties.maxSessions()).toList();
+            final SessionMeta open = activeByBuild.get(build);
+            final TuningCarDTO.ActiveSessionDTO active = open == null || open.startedAt().isBefore(since) ? null
+                    : new TuningCarDTO.ActiveSessionDTO(open.sampleCount(), properties.sessionSamples(), open.startedAt());
+            if (window.isEmpty() && active == null) {
+                continue;
             }
-            final SessionMeta latest = window.get(0);
+            final SessionMeta latest = window.isEmpty() ? open : window.get(0);
             final long samples = window.stream().mapToLong(SessionMeta::sampleCount).sum();
             final boolean ready = window.size() >= properties.minSessions() && samples >= properties.minSamples();
             cars.add(new TuningCarDTO(build.carOrdinal(), carName(latest), latest.carClass(), latest.performanceIndex(), build.performanceClass().name(),
-                    SessionDTO.from(latest).drivetrain(), window.size(), samples, properties.minSessions(), ready, latest.startedAt()));
-        });
+                    SessionDTO.from(latest).drivetrain(), window.size(), samples, properties.minSessions(), properties.minSamples(), ready,
+                    latest.startedAt(), active));
+        }
         cars.sort(Comparator.comparing(TuningCarDTO::lastSessionAt).reversed());
         return cars;
     }

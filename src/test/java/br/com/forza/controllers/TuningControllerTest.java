@@ -64,12 +64,16 @@ class TuningControllerTest {
 
     @Test
     void cars_returnsTheCarsWithProgress() throws Exception {
-        when(tuningService.cars()).thenReturn(List.of(new TuningCarDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD", 7, 9000, 10, false, Instant.parse("2026-10-10T12:00:00Z"))));
+        when(tuningService.cars()).thenReturn(List.of(new TuningCarDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD", 7, 9000, 10, 50_000, false, Instant.parse("2026-10-10T12:00:00Z"),
+                new TuningCarDTO.ActiveSessionDTO(2340, 5000, Instant.parse("2026-10-10T12:30:00Z")))));
 
         mockMvc.perform(get(BASE + "/cars").header("Authorization", "Bearer tok"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].carOrdinal").value(3667))
                 .andExpect(jsonPath("$[0].performanceClass").value("S2"))
+                .andExpect(jsonPath("$[0].requiredSamples").value(50_000))
+                .andExpect(jsonPath("$[0].activeSession.samples").value(2340))
+                .andExpect(jsonPath("$[0].activeSession.targetSamples").value(5000))
                 .andExpect(jsonPath("$[0].carName").value("2021 Porsche 911 GT3"))
                 .andExpect(jsonPath("$[0].sessions").value(7))
                 .andExpect(jsonPath("$[0].requiredSessions").value(10))

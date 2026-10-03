@@ -73,6 +73,9 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   com acelerador solto). `Gears.isForward` (1–10) filtra isso no `SummaryCalculator`, no `TuningAggregator` e no
   `TuningAdvisor` (resumos antigos já gravados trazem a chave "11"); sem o filtro a "última marcha" seria a 11 e a regra
   de relação final nunca dispararia.
+- **Sessão em andamento no card**: `GET /tuning/cars` traz `activeSession` (amostras ao vivo + alvo `tuning.session-samples`, que é o
+  mesmo `telemetry.session-max-samples`) por carro/classe; ela **não** entra no progresso até fechar, mas um carro só com
+  sessão aberta também é listado (progresso zero). Sessão aberta antes do marco de coleta é ignorada.
 - **Histórico de tunings** (`forza.tuning_history`, `GET /tuning/history[/{id}]`): ao **reiniciar a coleta** de um carro cuja
   recomendação já estava pronta, `TuningService.resetCollection` grava uma foto (JSONB da `TuningRecommendationDTO`)
   **antes** de mover o marco, na mesma transação (falha ao salvar = marco não se move). Sem dados suficientes nada é
