@@ -61,6 +61,9 @@ class RepositoriesIT {
     @Autowired
     private TuningCheckpointRepository checkpoints;
 
+    @Autowired
+    private TuningHistoryRepository history;
+
     private SessionMeta newSession(final Instant startedAt) {
         final var base = Fixtures.session(UUID.randomUUID(), 2, null);
         return new SessionMeta(base.id(), base.gameFormat(), 1234, 5, 800, 2, 8, 8000f, 1000f, 77, startedAt, null, 0, null);
@@ -291,5 +294,49 @@ class RepositoriesIT {
         assertThat(checkpoints.find("FH4/FH5/FH6", 777)).contains(Instant.parse("2026-11-04T10:00:00.123456Z"));
         assertThat(checkpoints.find("FM2023-Dash", 777)).isEmpty();
         assertThat(checkpoints.find("FH4/FH5/FH6", 778)).isEmpty();
+    }
+
+    private static TuningHistoryRepository.Entry historyEntry(final UUID id, final String format, final Instant savedAt, final String json) {
+        return new TuningHistoryRepository.Entry(id, format, 1105, "1964 Aston Martin DB5 Vantage", 3, 700, "RWD", savedAt,
+                Instant.parse("2026-10-03T19:02:00.123456Z"), Instant.parse("2026-10-03T19:28:00Z"), 12, 30_523L, 2, json);
+    }
+
+    @Test
+    void tuning_history_insertThenFindById_roundTripsTheJsonbAndAllColumns() {
+        final var id = UUID.randomUUID();
+        final var json = "{\"guides\":[{\"id\":\"pneus\",\"notes\":[\"áéí ç\"]}],\"thisCycle\":[]}";
+
+        history.insert(historyEntry(id, "FH4/FH5/FH6", Instant.parse("2026-10-03T19:50:00.654321Z"), json));
+        final var found = history.findById(id).orElseThrow();
+
+        assertThat(found.carOrdinal()).isEqualTo(1105);
+        assertThat(found.carName()).isEqualTo("1964 Aston Martin DB5 Vantage");
+        assertThat(found.carClass()).isEqualTo(3);
+        assertThat(found.performanceIndex()).isEqualTo(700);
+        assertThat(found.drivetrain()).isEqualTo("RWD");
+        assertThat(found.createdAt()).isEqualTo(Instant.parse("2026-10-03T19:50:00.654321Z"));
+        assertThat(found.windowFrom()).isEqualTo(Instant.parse("2026-10-03T19:02:00.123456Z"));
+        assertThat(found.sessions()).isEqualTo(12);
+        assertThat(found.samples()).isEqualTo(30_523L);
+        assertThat(found.adjustments()).isEqualTo(2);
+        assertThat(found.recommendationJson()).contains("\"pneus\"").contains("áéí ç");
+        assertThat(history.findById(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void tuning_history_findAll_filtersByFormat_newestFirst_withoutTheJson() {
+        final var older = UUID.randomUUID();
+        final var newer = UUID.randomUUID();
+        history.insert(historyEntry(older, "FH4/FH5/FH6", Instant.parse("2026-10-03T10:00:00Z"), "{}"));
+        history.insert(historyEntry(newer, "FH4/FH5/FH6", Instant.parse("2026-10-04T10:00:00Z"), "{}"));
+        history.insert(historyEntry(UUID.randomUUID(), "FM2023-Dash", Instant.parse("2026-10-05T10:00:00Z"), "{}"));
+
+        final var all = history.findAll("FH4/FH5/FH6");
+
+        assertThat(all).extracting(TuningHistoryRepository.Entry::id).containsSubsequence(newer, older);
+        assertThat(all).allSatisfy(e -> {
+            assertThat(e.gameFormat()).isEqualTo("FH4/FH5/FH6");
+            assertThat(e.recommendationJson()).isNull();
+        });
     }
 }

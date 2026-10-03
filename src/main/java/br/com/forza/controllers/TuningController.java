@@ -1,12 +1,15 @@
 package br.com.forza.controllers;
 
 import br.com.forza.models.dto.TuningCarDTO;
+import br.com.forza.models.dto.TuningHistoryDTO;
+import br.com.forza.models.dto.TuningHistoryItemDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO;
 import br.com.forza.tuning.TuningService;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,7 +48,24 @@ public class TuningController {
         return ResponseEntity.ok(tuningService.recommendation(carOrdinal));
     }
 
-    /** Reinicia a coleta do carro (use depois de aplicar ajustes no jogo): só sessões novas passam a contar. */
+    /** Tunings já feitos (fotos gravadas ao reiniciar a coleta de um carro), do mais recente para o mais antigo. */
+    @GetMapping("/history")
+    public ResponseEntity<List<TuningHistoryItemDTO>> history() {
+        return ResponseEntity.ok(tuningService.history());
+    }
+
+    /** Um tuning salvo, com todas as guias e os ajustes do ciclo como estavam quando foi gravado. */
+    @GetMapping("/history/{id}")
+    @ApiResponse(responseCode = "200", description = "Tuning salvo", content = @Content(schema = @Schema(implementation = TuningHistoryDTO.class)))
+    @ApiResponse(responseCode = "404", description = "Tuning salvo não encontrado", content = @Content(mediaType = "application/problem+json"))
+    public ResponseEntity<TuningHistoryDTO> historyEntry(@PathVariable final UUID id) {
+        return ResponseEntity.ok(tuningService.historyEntry(id));
+    }
+
+    /**
+     * Reinicia a coleta do carro (use depois de aplicar ajustes no jogo): só sessões novas passam a contar. Se a
+     * recomendação já estava pronta, ela é salva no histórico antes.
+     */
     @PostMapping("/cars/{carOrdinal}/checkpoint")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetCollection(@PathVariable final int carOrdinal) {

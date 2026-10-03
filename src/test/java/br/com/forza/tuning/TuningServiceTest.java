@@ -4,13 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.forza.config.TuningProperties;
 import br.com.forza.exceptions.ResourceNotFoundException;
+import br.com.forza.models.dto.TuningRecommendationDTO;
 import br.com.forza.models.dto.TuningSummaryDTO;
 import br.com.forza.models.dto.TuningSummaryDTO.Braking;
 import br.com.forza.models.dto.TuningSummaryDTO.CornerBalance;
@@ -24,6 +29,7 @@ import br.com.forza.models.dto.TuningSummaryDTO.Traction;
 import br.com.forza.models.entities.SessionMeta;
 import br.com.forza.repositories.SessionRepository;
 import br.com.forza.repositories.TuningCheckpointRepository;
+import br.com.forza.repositories.TuningHistoryRepository;
 import br.com.forza.telemetry.CarCatalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
@@ -35,17 +41,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class TuningServiceTest {
 
     private static final String HORIZON = "FH4/FH5/FH6";
     private static final Instant NOW = Instant.parse("2026-10-10T12:00:00Z");
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();   // como o do Spring: com java.time
     private final SessionRepository sessions = mock(SessionRepository.class);
     private final TuningCheckpointRepository checkpoints = mock(TuningCheckpointRepository.class);
+    private final TuningHistoryRepository history = mock(TuningHistoryRepository.class);
     private final TuningProperties properties = new TuningProperties(10, 6000, 20);
-    private final TuningService service = new TuningService(sessions, checkpoints, new TuningAggregator(), new TuningAdvisor(),
+    private final TuningService service = new TuningService(sessions, checkpoints, history, new TuningAggregator(), new TuningAdvisor(),
             new CarCatalog(mapper), mapper, properties, Clock.fixed(NOW, ZoneOffset.UTC));
 
     private static Map<String, SuspensionWheel> susp(final double bottoming) {
@@ -217,5 +225,107 @@ class TuningServiceTest {
         service.resetCollection(3667);
 
         verify(checkpoints).upsert(HORIZON, 3667, NOW);
+    }
+
+    @Test
+    void resetCollection_withAReadyRecommendation_savesItToTheHistoryBeforeMovingTheCheckpoint() throws Exception {
+        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+
+        service.resetCollection(3667);
+
+        final var entry = ArgumentCaptor.forClass(TuningHistoryRepository.Entry.class);
+        final var order = inOrder(history, checkpoints);
+        order.verify(history).insert(entry.capture());
+        order.verify(checkpoints).upsert(HORIZON, 3667, NOW);
+        final var saved = entry.getValue();
+        assertThat(saved.id()).isNotNull();
+        assertThat(saved.gameFormat()).isEqualTo(HORIZON);
+        assertThat(saved.carOrdinal()).isEqualTo(3667);
+        assertThat(saved.carName()).isEqualTo("2021 Porsche 911 GT3");
+        assertThat(saved.createdAt()).isEqualTo(NOW);
+        assertThat(saved.sessions()).isEqualTo(12);
+        assertThat(saved.samples()).isEqualTo(12_000);
+        assertThat(saved.adjustments()).isPositive();
+        assertThat(mapper.readValue(saved.recommendationJson(), TuningRecommendationDTO.class).guides()).hasSize(9);
+    }
+
+    @Test
+    void resetCollection_withoutEnoughData_savesNothingButStillMovesTheCheckpoint() throws Exception {
+        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 4, 1000, 9.0));
+
+        service.resetCollection(3667);
+
+        verify(history, never()).insert(any());
+        verify(checkpoints).upsert(HORIZON, 3667, NOW);
+    }
+
+    @Test
+    void resetCollection_withNoSessionsAtAll_savesNothingAndDoesNotFail() {
+        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(List.of());
+
+        service.resetCollection(3667);
+
+        verify(history, never()).insert(any());
+        verify(checkpoints).upsert(HORIZON, 3667, NOW);
+    }
+
+    @Test
+    void resetCollection_whenSavingTheHistoryFails_doesNotMoveTheCheckpoint() throws Exception {
+        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        doThrow(new IllegalStateException("banco fora")).when(history).insert(any());
+
+        assertThatThrownBy(() -> service.resetCollection(3667)).isInstanceOf(IllegalStateException.class);
+
+        verify(checkpoints, never()).upsert(anyString(), anyInt(), any());
+    }
+
+    @Test
+    void history_listsTheSavedTunings_withoutTheHeavyRecommendation() {
+        final var id = UUID.randomUUID();
+        when(history.findAll(HORIZON)).thenReturn(List.of(new TuningHistoryRepository.Entry(id, HORIZON, 1105, "1964 Aston Martin DB5 Vantage", 3, 700, "RWD",
+                NOW, NOW.minusSeconds(3600), NOW.minusSeconds(60), 12, 30_523L, 2, null)));
+
+        final var items = service.history();
+
+        assertThat(items).hasSize(1);
+        final var item = items.get(0);
+        assertThat(item.id()).isEqualTo(id);
+        assertThat(item.carOrdinal()).isEqualTo(1105);
+        assertThat(item.carName()).isEqualTo("1964 Aston Martin DB5 Vantage");
+        assertThat(item.drivetrain()).isEqualTo("RWD");
+        assertThat(item.savedAt()).isEqualTo(NOW);
+        assertThat(item.sessions()).isEqualTo(12);
+        assertThat(item.samples()).isEqualTo(30_523L);
+        assertThat(item.adjustments()).isEqualTo(2);
+    }
+
+    @Test
+    void historyEntry_returnsTheRecommendationAsItWasWhenSaved() throws Exception {
+        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        service.resetCollection(3667);
+        final var captured = ArgumentCaptor.forClass(TuningHistoryRepository.Entry.class);
+        verify(history).insert(captured.capture());
+        when(history.findById(captured.getValue().id())).thenReturn(Optional.of(captured.getValue()));
+
+        final var dto = service.historyEntry(captured.getValue().id());
+
+        assertThat(dto.id()).isEqualTo(captured.getValue().id());
+        assertThat(dto.savedAt()).isEqualTo(NOW);
+        assertThat(dto.recommendation().carOrdinal()).isEqualTo(3667);
+        assertThat(dto.recommendation().guides()).hasSize(9);
+        assertThat(dto.recommendation().thisCycle()).hasSize(captured.getValue().adjustments());
+    }
+
+    @Test
+    void historyEntry_unknownId_throwsNotFound() {
+        final var id = UUID.randomUUID();
+        when(history.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.historyEntry(id)).isInstanceOf(ResourceNotFoundException.class);
     }
 }

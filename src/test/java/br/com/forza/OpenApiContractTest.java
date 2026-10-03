@@ -38,7 +38,7 @@ class OpenApiContractTest {
     void readDtos_arePublishedAsSchemas() throws Exception {
         final var schemas = docs().at("/components/schemas");
 
-        for (final String name : List.of("SessionDTO", "SessionPageDTO", "LapDTO", "SampleDTO", "LiveSnapshotDTO", "LiveInfoDTO", "TuningSummaryDTO", "TuningRecommendationDTO", "TuningCarDTO")) {
+        for (final String name : List.of("SessionDTO", "SessionPageDTO", "LapDTO", "SampleDTO", "LiveSnapshotDTO", "LiveInfoDTO", "TuningSummaryDTO", "TuningRecommendationDTO", "TuningCarDTO", "TuningHistoryDTO", "TuningHistoryItemDTO")) {
             assertThat(schemas.has(name)).as("schema %s", name).isTrue();
         }
     }

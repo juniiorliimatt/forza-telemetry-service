@@ -222,6 +222,43 @@ paths:
           description: No Content
       tags:
       - tuning-controller
+  /api/v1/tuning/history:
+    get:
+      operationId: history
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TuningHistoryItemDTO"
+          description: OK
+      tags:
+      - tuning-controller
+  /api/v1/tuning/history/{id}:
+    get:
+      operationId: historyEntry
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TuningHistoryDTO"
+          description: Tuning salvo
+        "404":
+          content:
+            application/problem+json: {}
+          description: Tuning salvo não encontrado
+      tags:
+      - tuning-controller
 components:
   schemas:
     Braking:
@@ -637,6 +674,54 @@ components:
           type: string
         title:
           type: string
+    TuningHistoryDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        recommendation:
+          $ref: "#/components/schemas/TuningRecommendationDTO"
+        savedAt:
+          type: string
+          format: date-time
+    TuningHistoryItemDTO:
+      type: object
+      properties:
+        adjustments:
+          type: integer
+          format: int32
+        carClass:
+          type: integer
+          format: int32
+        carName:
+          type: string
+        carOrdinal:
+          type: integer
+          format: int32
+        drivetrain:
+          type: string
+        id:
+          type: string
+          format: uuid
+        performanceIndex:
+          type: integer
+          format: int32
+        samples:
+          type: integer
+          format: int64
+        savedAt:
+          type: string
+          format: date-time
+        sessions:
+          type: integer
+          format: int32
+        windowFrom:
+          type: string
+          format: date-time
+        windowTo:
+          type: string
+          format: date-time
     TuningReadinessDTO:
       type: object
       properties:

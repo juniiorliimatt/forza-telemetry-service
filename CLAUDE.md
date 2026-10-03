@@ -67,6 +67,11 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   com acelerador solto). `Gears.isForward` (1–10) filtra isso no `SummaryCalculator`, no `TuningAggregator` e no
   `TuningAdvisor` (resumos antigos já gravados trazem a chave "11"); sem o filtro a "última marcha" seria a 11 e a regra
   de relação final nunca dispararia.
+- **Histórico de tunings** (`forza.tuning_history`, `GET /tuning/history[/{id}]`): ao **reiniciar a coleta** de um carro cuja
+  recomendação já estava pronta, `TuningService.resetCollection` grava uma foto (JSONB da `TuningRecommendationDTO`)
+  **antes** de mover o marco, na mesma transação (falha ao salvar = marco não se move). Sem dados suficientes nada é
+  salvo. A foto independe das sessões (que podem ser apagadas) e das regras futuras do advisor: reflete o que foi
+  recomendado na época. Só nasce de um reinício — não há botão "salvar" avulso.
 - Regra nova = teste em `TuningAdvisorTest` primeiro (cada limiar tem mutação coberta).
 
 ## Nome do carro

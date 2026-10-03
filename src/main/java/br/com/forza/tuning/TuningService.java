@@ -4,12 +4,15 @@ import br.com.forza.config.TuningProperties;
 import br.com.forza.exceptions.ResourceNotFoundException;
 import br.com.forza.models.dto.SessionDTO;
 import br.com.forza.models.dto.TuningCarDTO;
+import br.com.forza.models.dto.TuningHistoryDTO;
+import br.com.forza.models.dto.TuningHistoryItemDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningReadinessDTO;
 import br.com.forza.models.dto.TuningSummaryDTO;
 import br.com.forza.models.entities.SessionMeta;
 import br.com.forza.repositories.SessionRepository;
 import br.com.forza.repositories.TuningCheckpointRepository;
+import br.com.forza.repositories.TuningHistoryRepository;
 import br.com.forza.telemetry.CarCatalog;
 import br.com.forza.telemetry.packet.PacketFormat;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,7 +25,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Recomendação de tuning por carro a partir das sessões coletadas. Escopo: família Horizon (FH4/FH5/FH6 usam o
@@ -39,6 +44,7 @@ public class TuningService {
 
     private final SessionRepository sessionRepository;
     private final TuningCheckpointRepository checkpointRepository;
+    private final TuningHistoryRepository historyRepository;
     private final TuningAggregator aggregator;
     private final TuningAdvisor advisor;
     private final CarCatalog carCatalog;
@@ -48,6 +54,7 @@ public class TuningService {
 
     public TuningService(final SessionRepository sessionRepository,
                          final TuningCheckpointRepository checkpointRepository,
+                         final TuningHistoryRepository historyRepository,
                          final TuningAggregator aggregator,
                          final TuningAdvisor advisor,
                          final CarCatalog carCatalog,
@@ -56,6 +63,7 @@ public class TuningService {
                          final Clock clock) {
         this.sessionRepository = sessionRepository;
         this.checkpointRepository = checkpointRepository;
+        this.historyRepository = historyRepository;
         this.aggregator = aggregator;
         this.advisor = advisor;
         this.carCatalog = carCatalog;
@@ -117,9 +125,53 @@ public class TuningService {
                 windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle());
     }
 
-    /** Reinicia a coleta do carro: só sessões a partir de agora contam (use depois de aplicar um ajuste no jogo). */
+    /**
+     * Reinicia a coleta do carro: só sessões a partir de agora contam (use depois de aplicar um ajuste no jogo).
+     * Se a recomendação já estava pronta, ela é salva no histórico antes — na mesma transação, então um erro ao
+     * salvar não descarta a coleta (o marco não se move).
+     */
+    @Transactional
     public void resetCollection(final int carOrdinal) {
+        saveToHistory(carOrdinal);
         checkpointRepository.upsert(GAME_FORMAT, carOrdinal, clock.instant());
+    }
+
+    /** Tunings salvos, do mais recente para o mais antigo. */
+    public List<TuningHistoryItemDTO> history() {
+        return historyRepository.findAll(GAME_FORMAT).stream()
+                .map(e -> new TuningHistoryItemDTO(e.id(), e.carOrdinal(), e.carName(), e.carClass(), e.performanceIndex(), e.drivetrain(),
+                        e.createdAt(), e.windowFrom(), e.windowTo(), e.sessions(), e.samples(), e.adjustments()))
+                .toList();
+    }
+
+    /** A recomendação como estava quando foi salva (independe das sessões atuais). */
+    public TuningHistoryDTO historyEntry(final UUID id) {
+        final TuningHistoryRepository.Entry entry = historyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Tuning salvo não encontrado: " + id));
+        try {
+            return new TuningHistoryDTO(entry.id(), entry.createdAt(), objectMapper.readValue(entry.recommendationJson(), TuningRecommendationDTO.class));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Tuning salvo ilegível: " + id, e);
+        }
+    }
+
+    private void saveToHistory(final int carOrdinal) {
+        final TuningRecommendationDTO rec;
+        try {
+            rec = recommendation(carOrdinal);
+        } catch (ResourceNotFoundException e) {
+            return;
+        }
+        if (!rec.readiness().ready()) {
+            return;
+        }
+        try {
+            historyRepository.insert(new TuningHistoryRepository.Entry(UUID.randomUUID(), GAME_FORMAT, carOrdinal, rec.carName(), rec.carClass(),
+                    rec.performanceIndex(), rec.drivetrain(), clock.instant(), rec.windowFrom(), rec.windowTo(), rec.readiness().sessions(),
+                    rec.readiness().samples(), rec.thisCycle().size(), objectMapper.writeValueAsString(rec)));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Não foi possível serializar a recomendação do carro " + carOrdinal, e);
+        }
     }
 
     private TuningReadinessDTO readiness(final int sessions, final long samples) {

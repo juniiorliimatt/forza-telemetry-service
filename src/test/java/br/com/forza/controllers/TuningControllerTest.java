@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import br.com.forza.config.SecurityConfig;
 import br.com.forza.exceptions.ResourceNotFoundException;
 import br.com.forza.models.dto.TuningCarDTO;
+import br.com.forza.models.dto.TuningHistoryDTO;
+import br.com.forza.models.dto.TuningHistoryItemDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningGuideDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningReadinessDTO;
@@ -20,6 +22,7 @@ import br.com.forza.tuning.TuningService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -113,6 +116,56 @@ class TuningControllerTest {
         mockMvc.perform(post(BASE + "/cars/3667/checkpoint")).andExpect(status().isUnauthorized());
 
         org.mockito.Mockito.verify(tuningService, org.mockito.Mockito.never()).resetCollection(anyInt());
+    }
+
+    @Test
+    void history_withoutToken_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get(BASE + "/history")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void history_listsTheSavedTunings() throws Exception {
+        final var id = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        when(tuningService.history()).thenReturn(List.of(new TuningHistoryItemDTO(id, 1105, "1964 Aston Martin DB5 Vantage", 3, 700, "RWD",
+                Instant.parse("2026-10-03T19:50:00Z"), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), 12, 30_523L, 2)));
+
+        mockMvc.perform(get(BASE + "/history").header("Authorization", "Bearer tok"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(id.toString()))
+                .andExpect(jsonPath("$[0].carName").value("1964 Aston Martin DB5 Vantage"))
+                .andExpect(jsonPath("$[0].sessions").value(12))
+                .andExpect(jsonPath("$[0].adjustments").value(2));
+    }
+
+    @Test
+    void historyEntry_returnsTheSavedRecommendation() throws Exception {
+        final var id = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        final var rec = new TuningRecommendationDTO(1105, "1964 Aston Martin DB5 Vantage", 3, 700, "RWD",
+                new TuningReadinessDTO(true, 12, 10, 30_523, 6000, List.of()), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), null,
+                List.of(), List.of());
+        when(tuningService.historyEntry(id)).thenReturn(new TuningHistoryDTO(id, Instant.parse("2026-10-03T19:50:00Z"), rec));
+
+        mockMvc.perform(get(BASE + "/history/" + id).header("Authorization", "Bearer tok"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.savedAt").exists())
+                .andExpect(jsonPath("$.recommendation.carOrdinal").value(1105))
+                .andExpect(jsonPath("$.recommendation.readiness.ready").value(true));
+    }
+
+    @Test
+    void historyEntry_unknownId_returnsProblemJson404() throws Exception {
+        final var id = UUID.randomUUID();
+        when(tuningService.historyEntry(id)).thenThrow(new ResourceNotFoundException("Tuning salvo não encontrado: " + id));
+
+        mockMvc.perform(get(BASE + "/history/" + id).header("Authorization", "Bearer tok"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void historyEntry_malformedId_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/history/nao-e-uuid").header("Authorization", "Bearer tok")).andExpect(status().isBadRequest());
     }
 
     @Test
