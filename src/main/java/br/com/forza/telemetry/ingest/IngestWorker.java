@@ -45,6 +45,7 @@ public class IngestWorker implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(IngestWorker.class);
     private static final long OPEN_RETRY_BACKOFF_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final long JOIN_TIMEOUT_MS = 15_000;
+    private static final int CLOSE_FLUSH_ATTEMPTS = 3;
 
     private final TelemetryProperties properties;
     private final LiveSnapshot liveSnapshot;
@@ -298,7 +299,7 @@ public class IngestWorker implements SmartLifecycle {
         active = null;
         final SessionMeta meta = closing.meta;
         try {
-            flush(closing, System.nanoTime());
+            flushForClose(closing);
             if (closing.persisted < properties.minSessionSamples()) {
                 sessionRepository.delete(meta.id());
                 log.info("Sessão {} descartada ({}): só {} amostras", meta.id(), reason, closing.persisted);
@@ -311,6 +312,25 @@ public class IngestWorker implements SmartLifecycle {
             log.info("Sessão {} encerrada ({}): {} amostras", meta.id(), reason, closing.persisted);
         } catch (RuntimeException e) {
             log.error("Falha ao encerrar a sessão {}", meta.id(), e);
+        }
+    }
+
+    /**
+     * Flush final do fechamento: tenta algumas vezes (falha transitória de banco) e, se ainda
+     * assim não gravar, registra a perda e segue — a sessão nunca fica aberta no banco por
+     * causa de um lote pendente (fecha com o que já foi persistido, ou é descartada).
+     */
+    private void flushForClose(final ActiveSession session) {
+        for (int attempt = 1; attempt <= CLOSE_FLUSH_ATTEMPTS; attempt++) {
+            try {
+                flush(session, System.nanoTime());
+                return;
+            } catch (RuntimeException e) {
+                if (attempt == CLOSE_FLUSH_ATTEMPTS) {
+                    log.error("Falha ao gravar o lote final da sessão {} — {} amostras pendentes perdidas",
+                            session.meta.id(), session.pending.size(), e);
+                }
+            }
         }
     }
 

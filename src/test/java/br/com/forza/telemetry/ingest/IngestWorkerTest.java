@@ -301,23 +301,59 @@ class IngestWorkerTest {
         assertThat(w.isRunning()).isTrue();
     }
 
-    /**
-     * Limitação conhecida: se o flush final (no fechamento) falha, o worker sobrevive mas as
-     * amostras pendentes se perdem e a sessão fica sem {@code ended_at}/resumo no banco.
-     */
     @Test
-    void run_finalFlushFailure_workerSurvivesButSessionIsNotClosed() {
-        doThrow(new IllegalStateException("falha de escrita")).when(sampleRepository).batchInsert(any(), any());
+    void run_finalFlushFailsOnce_isRetriedAndSessionClosesWithAllSamples() {
+        doThrow(new IllegalStateException("falha transitória")).doAnswer(copyBatch).when(sampleRepository).batchInsert(any(), any());
+        final var w = defaultWorker();
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), i * 16 * MS));
+        }
+
+        w.start();
+        w.stop();
+
+        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
+        verify(sessionRepository).insert(meta.capture());
+        assertThat(persistedSamples()).hasSize(3);
+        verify(sessionRepository).close(eq(meta.getValue().id()), any(), eq(3), anyString());
+    }
+
+    @Test
+    void run_finalFlushKeepsFailingAndNothingWasPersisted_sessionIsDeletedNotLeftOpen() {
+        doThrow(new IllegalStateException("banco fora do ar")).when(sampleRepository).batchInsert(any(), any());
         final var w = defaultWorker();
         w.offer(raw(racing(), 0));
 
         w.start();
         w.stop();
 
-        verify(sessionRepository).insert(any());
+        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
+        verify(sessionRepository).insert(meta.capture());
+        verify(sessionRepository).delete(meta.getValue().id());
         verify(sessionRepository, never()).close(any(), any(), anyInt(), any());
-        verify(sessionRepository, never()).delete(any());
         assertThat(w.isRunning()).isFalse();
+    }
+
+    @Test
+    void run_finalFlushKeepsFailingButEarlierSamplesWerePersisted_sessionStillClosesWithPersistedCount() {
+        doAnswer(copyBatch).doThrow(new IllegalStateException("banco fora do ar")).when(sampleRepository).batchInsert(any(), any());
+        final var w = workerWith(1000, 1, 3, Duration.ofSeconds(30));
+        final var now = System.nanoTime();
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), now + i * MS));
+        }
+        w.start();
+        verify(sampleRepository, timeout(5000)).batchInsert(any(), any());
+        w.offer(raw(racing(), now + 10 * MS));
+        w.offer(raw(racing(), now + 11 * MS));
+
+        w.stop();
+
+        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
+        verify(sessionRepository).insert(meta.capture());
+        final var summary = ArgumentCaptor.forClass(String.class);
+        verify(sessionRepository).close(eq(meta.getValue().id()), any(), eq(3), summary.capture());
+        verify(sessionRepository, never()).delete(any());
     }
 
     @Test
