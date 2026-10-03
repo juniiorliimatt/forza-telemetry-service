@@ -14,8 +14,8 @@
   temporária** pro Claude ("Claude implementa tudo", 2026-10-03). Detalhes e limites em
   [raiz → Divisão de responsabilidade](../CLAUDE.md#divisão-de-responsabilidade).
 - **Estado do repositório**: repo no GitLab (`sonar-group-oojuniiin/forza-telemetry-service`)
-  e espelho no GitHub, registrado como submódulo do monorepo. Ainda **sem
-  `.gitlab-ci.yml` e sem Sonar** — o `contract-drift-check` não protege o contrato.
+  e espelho no GitHub, registrado como submódulo do monorepo. CI com `test`,
+  `contract-drift-check` e `build`; ainda **sem Sonar**.
 
 ## Stack e execução
 - Java 25 LTS, Spring Boot 3.5.16, Gradle 9.7.1 (`./gradlew`), **JDBC** (`spring-boot-starter-jdbc`,
