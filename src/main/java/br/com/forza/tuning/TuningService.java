@@ -38,8 +38,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TuningService {
 
-    /** Amostras gravadas a ~20 Hz: converte o mínimo de amostras em minutos de pilotagem para a mensagem. */
-    private static final double SAMPLES_PER_MINUTE = 20.0 * 60.0;
     private static final String GAME_FORMAT = PacketFormat.HORIZON.label();
 
     private final SessionRepository sessionRepository;
@@ -182,7 +180,7 @@ public class TuningService {
         }
         if (samples < properties.minSamples()) {
             final long needSamples = properties.minSamples() - samples;
-            missing.add("Faltam " + needSamples + " amostras (~" + Math.max(1, Math.round(needSamples / SAMPLES_PER_MINUTE)) + " min de pilotagem gravada).");
+            missing.add("Faltam " + needSamples + " amostras (" + samples + " de " + properties.minSamples() + ").");
         }
         return new TuningReadinessDTO(missing.isEmpty(), sessions, properties.minSessions(), samples, properties.minSamples(), missing);
     }

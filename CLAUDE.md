@@ -47,8 +47,8 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 - Escopo: família **Horizon** (FH4/FH5/FH6 usam o mesmo pacote de 324 bytes, então o jogo não é distinguido — o
   card do front diz "FH6"). `TuningService` pega as sessões **encerradas com resumo** de um carro, só as
   iniciadas após o **marco de coleta** (`tuning_checkpoints`, `POST /tuning/cars/{ordinal}/checkpoint`) e só as
-  `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (30000
-  amostras = 10 sessões cheias de 3000 ≈ 25 min a 20 Hz) — contagem de sessões sozinha não basta, uma sessão pode ter segundos.
+  `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (50000
+  amostras = 10 sessões cheias de 5000) — contagem de sessões sozinha não basta, uma sessão pode ter poucas amostras.
 - `TuningAggregator` combina os resumos ponderando por amostras; `TuningAdvisor` aplica as regras
   sintoma→ajuste da skill `forza-tuning-engineer` (matriz e limiares: bottoming > 3%, pneus 170–210 °F, eixos > 15 °F,
   limitador na última marcha, travamento > 5%, patinagem > 15%, balanço com diferença ≥ 20 pontos e ≥ 150 amostras).
@@ -92,17 +92,17 @@ catálogo de outra família (FM7 e Sled não têm). `carName` (nulo se desconhec
   `PacketFormat` + teste com pacote sintético.
 - **Sessão** = trecho contínuo com o mesmo carro (e mesma pista, no FM). Abre no primeiro
   pacote com `IsRaceOn=1` **e o carro andando** (velocidade ≥ 0,5 m/s); fecha por inatividade
-  (`telemetry.session-idle-timeout=30s`), **carro parado** por mais de `telemetry.session-stationary-timeout=30s`
-  seguidos, troca de carro/pista ou shutdown. A garagem (e menus de foto/loja) segue mandando `IsRaceOn=1` com o carro
-  parado — sem a regra de velocidade a sessão nunca fecharia e o tuning não contaria. Parado não reabre sessão; só ao
-  voltar a andar (o contador de parado usa o carimbo dos pacotes, não o relógio). Sessões com < 100 amostras
-  (`min-session-samples`) são descartadas (ruído de menu).
-- **Rotação por amostras**: o jogo não avisa que o carro está na garagem, então a sessão **fecha sozinha ao juntar
-  `telemetry.session-max-samples` (3000) amostras gravadas** (já pós-downsample; ~2,5 min a 20 Hz) e a próxima abre no
-  pacote seguinte. **Em corrida/evento espera acabar**: `lapNumber > 0` (no mundo aberto é 0 — conferido em amostras
-  reais: 0 = exploração a ~50 km/h, 1+ = voltas a 130–170 km/h); `racePosition` não é usado (não validado no mundo
-  aberto; falso positivo impediria a rotação). Sprints sem volta (`lapNumber` 0) rotacionam no meio — limitação
-  conhecida. Corrida longa passa de 3000 sem teto. 10 sessões cheias = 30000 amostras = mínimo do tuning.
+  (`telemetry.session-idle-timeout=30s`, sem pacotes), troca de carro/pista, **limite de amostras** (abaixo) ou
+  shutdown. **Não há regra de tempo parado**: a garagem (e menus de foto/loja) segue mandando `IsRaceOn=1` com o carro
+  parado, então **carro parado (< 0,5 m/s) não gera amostra nem abre sessão** — só as amostras limitam a sessão e contam
+  para o tuning. Sessões com < 100 amostras (`min-session-samples`) são descartadas (ruído de menu).
+- **Rotação por amostras**: a sessão **fecha sozinha ao juntar `telemetry.session-max-samples` (5000) amostras
+  gravadas** (já pós-downsample) e a próxima abre no pacote seguinte. **Em corrida/evento espera acabar**:
+  `lapNumber > 0` (no mundo aberto é 0 — conferido em amostras reais: 0 = exploração a ~50 km/h, 1+ = voltas a
+  130–170 km/h); `racePosition` não é usado (não validado no mundo aberto; falso positivo impediria a rotação).
+  Sprints sem volta (`lapNumber` 0) rotacionam no meio — limitação conhecida. Corrida longa passa de 5000 sem teto.
+  Uma sessão parada na garagem fica "Ativa" sem amostras até voltar a andar, trocar de carro ou o jogo parar de
+  enviar pacotes. 10 sessões cheias = 50000 amostras = mínimo do tuning (tempo não entra na regra).
 - A inatividade (`session-idle-timeout`) conta o **relógio real** do último pacote processado (`lastSeenNanos`), não o
   carimbo do pacote — os carimbos "virtuais" dos testes fechavam a sessão por engano (testes instáveis).
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s

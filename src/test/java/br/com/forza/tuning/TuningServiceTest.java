@@ -149,7 +149,7 @@ class TuningServiceTest {
         assertThat(rec.readiness().ready()).isFalse();
         assertThat(rec.readiness().samples()).isEqualTo(2400);
         assertThat(rec.readiness().requiredSamples()).isEqualTo(6000);
-        assertThat(rec.readiness().missing()).anySatisfy(m -> assertThat(m).containsIgnoringCase("amostras"));
+        assertThat(rec.readiness().missing()).anySatisfy(m -> assertThat(m).containsIgnoringCase("amostras").doesNotContainIgnoringCase("min"));
         assertThat(rec.guides()).isEmpty();
     }
 

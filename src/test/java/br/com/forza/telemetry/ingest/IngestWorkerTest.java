@@ -59,19 +59,14 @@ class IngestWorkerTest {
 
     private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
                                     final Duration idleTimeout) {
-        return workerWith(queueCapacity, sampleEvery, minSamples, idleTimeout, Duration.ofSeconds(30));
+        return workerWith(queueCapacity, sampleEvery, minSamples, idleTimeout, 5000);
     }
 
     private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
-                                    final Duration idleTimeout, final Duration stationaryTimeout) {
-        return workerWith(queueCapacity, sampleEvery, minSamples, idleTimeout, stationaryTimeout, 3000);
-    }
-
-    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
-                                    final Duration idleTimeout, final Duration stationaryTimeout, final int maxSamples) {
+                                    final Duration idleTimeout, final int maxSamples) {
         final var properties = new TelemetryProperties(
                 new TelemetryProperties.Udp(true, 5310, queueCapacity, 65_536),
-                sampleEvery, idleTimeout, stationaryTimeout, maxSamples, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
+                sampleEvery, idleTimeout, maxSamples, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
         worker = new IngestWorker(properties, liveSnapshot, sessionRepository, lapRepository, sampleRepository,
                 new SummaryCalculator(), new ObjectMapper());
         return worker;
@@ -137,85 +132,66 @@ class IngestWorkerTest {
     }
 
     /**
-     * Na garagem o jogo continua mandando pacotes com IsRaceOn=1 e o carro parado: sem olhar a velocidade a sessão
-     * nunca fecharia. O tempo vem do carimbo dos pacotes (determinístico), não do relógio.
+     * Na garagem o jogo continua mandando pacotes com IsRaceOn=1 e o carro parado. Só as amostras limitam a sessão,
+     * então tempo parado não gera amostra (e portanto não conta para a janela nem para o tuning).
      */
     @Test
-    void run_carStoppedLongerThanTheLimit_closesTheSession_andStationaryPacketsDoNotOpenAnotherOne() {
-        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
-        for (int i = 0; i < 3; i++) {
-            w.offer(raw(racing(), i * 16 * MS));
-        }
-        for (int s = 1; s <= 14; s++) {
-            w.offer(raw(parked(), seconds(s)));      // para no 1º segundo; > 10 s parado no pacote de 12 s
-        }
-
-        w.start();
-        w.stop();
-
-        verify(sessionRepository, times(1)).insert(any());
-        final var samples = ArgumentCaptor.forClass(Integer.class);
-        verify(sessionRepository).close(any(), any(), samples.capture(), anyString());
-        assertThat(samples.getValue()).isEqualTo(3 + 11);   // 3 em movimento + parados de 1 s a 11 s; o de 12 s fecha
-    }
-
-    @Test
-    void run_afterStoppedClose_drivingAgainOpensANewSession() {
-        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
-        for (int i = 0; i < 3; i++) {
-            w.offer(raw(racing(), i * 16 * MS));
-        }
-        for (int s = 1; s <= 13; s++) {
-            w.offer(raw(parked(), seconds(s)));
-        }
-        w.offer(raw(racing(), seconds(20)));
-        w.offer(raw(racing(), seconds(21)));
-
-        w.start();
-        w.stop();
-
-        verify(sessionRepository, times(2)).insert(any());
-        verify(sessionRepository, times(2)).close(any(), any(), anyInt(), anyString());
-    }
-
-    @Test
-    void run_carStoppedBelowTheLimit_keepsTheSession() {
-        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+    void run_carStopped_generatesNoSamples() {
+        final var w = defaultWorker();
         for (int i = 0; i < 3; i++) {
             w.offer(raw(racing(), i * 16 * MS));
         }
         for (int s = 1; s <= 5; s++) {
             w.offer(raw(parked(), seconds(s)));
         }
+        for (int i = 0; i < 2; i++) {
+            w.offer(raw(racing(), seconds(10) + i * 16 * MS));
+        }
 
         w.start();
         w.stop();
 
         verify(sessionRepository, times(1)).insert(any());
-        assertThat(persistedSamples()).hasSize(8);
+        assertThat(persistedSamples()).hasSize(5);   // 3 + 2 andando; os 5 parados não entram
     }
 
     @Test
-    void run_movingAgainResetsTheStoppedCountdown() {
-        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
-        w.offer(raw(racing(), 0));
-        for (int s = 1; s <= 9; s++) {
-            w.offer(raw(parked(), seconds(s)));      // 8 s parado
+    void run_parkedPackets_doNotCountTowardTheRotationLimit() {
+        final var w = rotatingWorker(3);
+        for (int i = 0; i < 2; i++) {
+            w.offer(raw(racing(), i * 16 * MS));
         }
-        w.offer(raw(racing(), seconds(10)));          // volta a andar
-        for (int s = 11; s <= 19; s++) {
-            w.offer(raw(parked(), seconds(s)));      // outros 8 s parado: nunca passa de 10 s seguidos
+        for (int s = 1; s <= 50; s++) {
+            w.offer(raw(parked(), seconds(s)));      // 50 pacotes parado: não enchem a janela
+        }
+        w.offer(raw(racing(), seconds(60)));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        verify(sessionRepository).close(any(), any(), eq(3), anyString());
+    }
+
+    @Test
+    void run_parkedForAWhile_keepsTheSessionOpen_noTimeRuleClosesIt() {
+        final var w = defaultWorker();
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), i * 16 * MS));
+        }
+        for (int m = 1; m <= 20; m++) {
+            w.offer(raw(parked(), seconds(m * 60)));   // 20 minutos parado, pelo carimbo dos pacotes
         }
 
         w.start();
         w.stop();
 
         verify(sessionRepository, times(1)).insert(any());
-        assertThat(persistedSamples()).hasSize(20);   // nada foi cortado: a sessão seguiu aberta até o fim
+        verify(sessionRepository).close(any(), any(), eq(3), anyString());
     }
 
     private IngestWorker rotatingWorker(final int maxSamples) {
-        return workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(30), maxSamples);
+        return workerWith(1000, 1, 1, Duration.ofSeconds(30), maxSamples);
     }
 
     private static byte[] freeRoam() {
@@ -292,7 +268,7 @@ class IngestWorkerTest {
 
     @Test
     void run_rotationCountsStoredSamples_notRawPackets() {
-        final var w = workerWith(1000, 3, 1, Duration.ofSeconds(30), Duration.ofSeconds(30), 3);
+        final var w = workerWith(1000, 3, 1, Duration.ofSeconds(30), 3);
         for (int i = 0; i < 18; i++) {
             w.offer(raw(freeRoam(), i * 16 * MS));      // downsample 3: 1 amostra a cada 3 pacotes (o contador reinicia a cada sessão)
         }
@@ -307,7 +283,7 @@ class IngestWorkerTest {
 
     @Test
     void run_onlyStationaryPackets_neverOpenASession() {
-        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+        final var w = defaultWorker();
         for (int s = 0; s <= 30; s++) {
             w.offer(raw(parked(), seconds(s)));
         }

@@ -47,10 +47,8 @@ public class IngestWorker implements SmartLifecycle {
     private static final long OPEN_RETRY_BACKOFF_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final long JOIN_TIMEOUT_MS = 15_000;
     private static final int CLOSE_FLUSH_ATTEMPTS = 3;
-    /** Abaixo disso (m/s) o carro conta como parado — garagem, menu, foto. */
+    /** Abaixo disso (m/s) o carro conta como parado — garagem, menu, foto: não abre sessão e não gera amostra. */
     private static final float STOPPED_SPEED_MS = 0.5f;
-    /** Sentinela (os carimbos em nanos podem ser 0 ou negativos): "não está parado". */
-    private static final long NOT_STOPPED = Long.MIN_VALUE;
 
     private final TelemetryProperties properties;
     private final LiveSnapshot liveSnapshot;
@@ -199,9 +197,6 @@ public class IngestWorker implements SmartLifecycle {
             closeActive("limite de amostras");
         }
         final boolean stopped = packet.dash().speed() < STOPPED_SPEED_MS;
-        if (active != null && stoppedTooLong(stopped, raw.receivedNanos())) {
-            closeActive("carro parado");
-        }
         if (active == null) {
             // Na garagem o jogo segue mandando IsRaceOn=1 com o carro parado: só abre sessão quando ele anda.
             if (stopped || raw.receivedNanos() < openRetryAfterNanos) {
@@ -215,7 +210,8 @@ public class IngestWorker implements SmartLifecycle {
         active.lastSeenNanos = System.nanoTime();
         trackLap(dash);
 
-        if (active.rawCounter++ % properties.sampleEvery() == 0) {
+        // Carro parado (garagem, menu, largada) não gera amostra: só as amostras limitam a sessão e contam para o tuning.
+        if (!stopped && active.rawCounter++ % properties.sampleEvery() == 0) {
             active.pending.add(toSample(packet, active, raw.receivedNanos()));
         }
         if (active.pending.size() >= properties.flushBatchSize()) {
@@ -230,18 +226,6 @@ public class IngestWorker implements SmartLifecycle {
      */
     private static boolean inRace(final TelemetryPacket.Dash dash) {
         return dash.lapNumber() > 0;
-    }
-
-    /** Atualiza o início do trecho parado (pelo carimbo do pacote) e diz se ele já passou do limite configurado. */
-    private boolean stoppedTooLong(final boolean stopped, final long nowNanos) {
-        if (!stopped) {
-            active.stoppedSinceNanos = NOT_STOPPED;
-            return false;
-        }
-        if (active.stoppedSinceNanos == NOT_STOPPED) {
-            active.stoppedSinceNanos = nowNanos;
-        }
-        return nowNanos - active.stoppedSinceNanos > properties.sessionStationaryTimeout().toNanos();
     }
 
     private boolean changesSession(final TelemetryPacket packet) {
@@ -393,7 +377,6 @@ public class IngestWorker implements SmartLifecycle {
         private int lastTMs = -1;
         private int lastLapNumber;
         private int persisted;
-        private long stoppedSinceNanos = NOT_STOPPED;
 
         /** Amostras já gravadas mais as que aguardam o próximo lote. */
         private int storedSamples() {
