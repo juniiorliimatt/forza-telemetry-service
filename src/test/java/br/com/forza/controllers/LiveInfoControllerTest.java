@@ -25,7 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /** {@code GET /api/v1/live/info}: IP(s) e porta UDP que o jogo deve usar, anunciados por configuração. */
 @WebMvcTest(LiveController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, br.com.forza.telemetry.CarCatalog.class})
 @EnableConfigurationProperties(TelemetryProperties.class)
 @TestPropertySource(properties = {"telemetry.advertised-hosts= 192.168.0.10 , ,10.0.0.5", "telemetry.advertised-port=5311"})
 class LiveInfoControllerTest {

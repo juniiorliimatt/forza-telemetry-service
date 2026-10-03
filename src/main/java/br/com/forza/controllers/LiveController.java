@@ -4,7 +4,9 @@ import br.com.forza.config.TelemetryProperties;
 import br.com.forza.exceptions.ResourceNotFoundException;
 import br.com.forza.models.dto.LiveInfoDTO;
 import br.com.forza.models.dto.LiveSnapshotDTO;
+import br.com.forza.telemetry.CarCatalog;
 import br.com.forza.telemetry.ingest.LiveSnapshot;
+import br.com.forza.telemetry.packet.TelemetryPacket;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.util.Arrays;
@@ -21,15 +23,18 @@ public class LiveController {
 
     private final LiveSnapshot liveSnapshot;
     private final TelemetryProperties properties;
+    private final CarCatalog carCatalog;
     private final List<String> advertisedHosts;
     private final int advertisedPort;
 
     public LiveController(final LiveSnapshot liveSnapshot,
                           final TelemetryProperties properties,
+                          final CarCatalog carCatalog,
                           @Value("${telemetry.advertised-hosts:}") final String advertisedHosts,
                           @Value("${telemetry.advertised-port:${telemetry.udp.port:5310}}") final int advertisedPort) {
         this.liveSnapshot = liveSnapshot;
         this.properties = properties;
+        this.carCatalog = carCatalog;
         this.advertisedHosts = Arrays.stream(advertisedHosts.split(",")).map(String::trim).filter(host -> !host.isEmpty()).toList();
         this.advertisedPort = advertisedPort;
     }
@@ -46,6 +51,8 @@ public class LiveController {
     public ResponseEntity<LiveSnapshotDTO> snapshot() {
         final LiveSnapshot.Reading reading = liveSnapshot.current(properties.liveStaleAfter())
                 .orElseThrow(() -> new ResourceNotFoundException("Nenhum pacote de telemetria recebido recentemente"));
-        return ResponseEntity.ok(LiveSnapshotDTO.from(reading));
+        final TelemetryPacket packet = reading.packet();
+        final String carName = carCatalog.nameOf(packet.format(), packet.carOrdinal()).orElse(null);
+        return ResponseEntity.ok(LiveSnapshotDTO.from(reading, carName));
     }
 }

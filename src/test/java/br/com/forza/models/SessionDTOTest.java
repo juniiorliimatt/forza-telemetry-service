@@ -36,4 +36,14 @@ class SessionDTOTest {
         assertThat(dto.trackOrdinal()).isEqualTo(7);
         assertThat(dto.sampleCount()).isEqualTo(100);
     }
+
+    @Test
+    void from_withoutCatalogName_hasNullCarName() {
+        assertThat(SessionDTO.from(Fixtures.session(0)).carName()).isNull();
+    }
+
+    @Test
+    void from_withCatalogName_exposesCarName() {
+        assertThat(SessionDTO.from(Fixtures.session(0), "2021 Porsche 911 GT3").carName()).isEqualTo("2021 Porsche 911 GT3");
+    }
 }

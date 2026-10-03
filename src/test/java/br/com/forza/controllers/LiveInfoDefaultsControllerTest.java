@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /** Sem IP configurado: lista vazia (o front decide o fallback) e porta = a UDP em escuta. */
 @WebMvcTest(LiveController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, br.com.forza.telemetry.CarCatalog.class})
 @EnableConfigurationProperties(TelemetryProperties.class)
 class LiveInfoDefaultsControllerTest {
 

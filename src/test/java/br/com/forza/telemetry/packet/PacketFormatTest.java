@@ -36,4 +36,16 @@ class PacketFormatTest {
         assertThat(PacketFormat.HORIZON.hasTireWear()).isFalse();
         assertThat(PacketFormat.SLED.hasTireWear()).isFalse();
     }
+
+    @ParameterizedTest
+    @CsvSource({"Sled,SLED", "FM7-Dash,FM7_DASH", "FH4/FH5/FH6,HORIZON", "FM2023-Dash,FM_DASH"})
+    void fromLabel_knownLabel_returnsFormat(final String label, final PacketFormat expected) {
+        assertThat(PacketFormat.fromLabel(label)).contains(expected);
+    }
+
+    @Test
+    void fromLabel_unknownOrNull_returnsEmpty() {
+        assertThat(PacketFormat.fromLabel("x")).isEmpty();
+        assertThat(PacketFormat.fromLabel(null)).isEmpty();
+    }
 }

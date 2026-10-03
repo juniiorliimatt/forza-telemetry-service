@@ -12,6 +12,7 @@ public record LiveSnapshotDTO(Instant receivedAt,
                               String gameFormat,
                               boolean raceOn,
                               int carOrdinal,
+                              String carName,
                               int performanceIndex,
                               float rpm,
                               float engineMaxRpm,
@@ -30,6 +31,10 @@ public record LiveSnapshotDTO(Instant receivedAt,
                               Float bestLapS) {
 
     public static LiveSnapshotDTO from(final LiveSnapshot.Reading reading) {
+        return from(reading, null);
+    }
+
+    public static LiveSnapshotDTO from(final LiveSnapshot.Reading reading, final String carName) {
         final TelemetryPacket p = reading.packet();
         final TelemetryPacket.Dash d = p.dash();
         return new LiveSnapshotDTO(
@@ -37,6 +42,7 @@ public record LiveSnapshotDTO(Instant receivedAt,
                 p.format().label(),
                 p.raceOn(),
                 p.carOrdinal(),
+                carName,
                 p.performanceIndex(),
                 p.currentRpm(),
                 p.engineMaxRpm(),

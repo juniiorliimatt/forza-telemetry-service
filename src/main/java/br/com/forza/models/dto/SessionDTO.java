@@ -11,6 +11,7 @@ import java.util.UUID;
 public record SessionDTO(UUID id,
                          String gameFormat,
                          int carOrdinal,
+                         String carName,
                          int carClass,
                          int performanceIndex,
                          String drivetrain,
@@ -22,10 +23,16 @@ public record SessionDTO(UUID id,
                          boolean active) {
 
     public static SessionDTO from(final SessionMeta meta) {
+        return from(meta, null);
+    }
+
+    /** {@code carName} vem do catálogo ({@code CarCatalog}); nulo quando o ordinal não é conhecido. */
+    public static SessionDTO from(final SessionMeta meta, final String carName) {
         return new SessionDTO(
                 meta.id(),
                 meta.gameFormat(),
                 meta.carOrdinal(),
+                carName,
                 meta.carClass(),
                 meta.performanceIndex(),
                 drivetrainName(meta.drivetrain()),

@@ -31,7 +31,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(LiveController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, br.com.forza.telemetry.CarCatalog.class})
 @EnableConfigurationProperties(TelemetryProperties.class)
 class LiveControllerTest {
 
@@ -84,6 +84,25 @@ class LiveControllerTest {
                 .andExpect(jsonPath("$.steer").value(-10))
                 .andExpect(jsonPath("$.lapNumber").value(2))
                 .andExpect(jsonPath("$.raceOn").value(true));
+    }
+
+    @Test
+    void snapshot_includesTheExactCarNameWhenTheCatalogKnowsTheOrdinal() throws Exception {
+        stubLatest(PacketBuilder.racing(PacketFormat.HORIZON).car(3667, 5, 800, 2, 8).build());
+
+        mockMvc.perform(get(URL).header("Authorization", "Bearer tok"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.carOrdinal").value(3667))
+                .andExpect(jsonPath("$.carName").value("2021 Porsche 911 GT3"));
+    }
+
+    @Test
+    void snapshot_unknownCar_hasNoCarName() throws Exception {
+        stubLatest(PacketBuilder.racing(PacketFormat.HORIZON).car(1, 5, 800, 2, 8).build());
+
+        mockMvc.perform(get(URL).header("Authorization", "Bearer tok"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.carName").doesNotExist());
     }
 
     @Test

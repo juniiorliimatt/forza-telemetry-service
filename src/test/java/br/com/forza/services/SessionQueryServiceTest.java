@@ -40,7 +40,7 @@ class SessionQueryServiceTest {
     private final LapRepository lapRepository = mock(LapRepository.class);
     private final SampleRepository sampleRepository = mock(SampleRepository.class);
     private final SessionQueryService service = new SessionQueryService(sessionRepository, lapRepository,
-            sampleRepository, new SummaryCalculator(), new ObjectMapper());
+            sampleRepository, new SummaryCalculator(), new ObjectMapper(), new br.com.forza.telemetry.CarCatalog(new ObjectMapper()));
 
     private static SessionMeta sessionAt(final Instant startedAt) {
         final var base = Fixtures.session(UUID.randomUUID(), 1, null);
@@ -279,5 +279,35 @@ class SessionQueryServiceTest {
         when(sessionRepository.findById(id)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> service.samples(id, 0, null, 10)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void get_resolvesTheCarNameFromTheCatalogByGameFormat() {
+        final var base = sessionAt(Instant.parse("2026-10-03T12:00:00Z"));
+        final var meta = new SessionMeta(base.id(), "FH4/FH5/FH6", 3667, 5, 800, 2, 8, 8000f, 1000f, null, base.startedAt(), null, 0, null);
+        when(sessionRepository.findById(meta.id())).thenReturn(java.util.Optional.of(meta));
+
+        assertThat(service.get(meta.id()).carName()).isEqualTo("2021 Porsche 911 GT3");
+    }
+
+    @Test
+    void get_unknownOrdinalOrFormatWithoutCatalog_hasNoCarName() {
+        final var base = sessionAt(Instant.parse("2026-10-03T12:00:00Z"));
+        final var unknown = new SessionMeta(UUID.randomUUID(), "FH4/FH5/FH6", 1, 5, 800, 2, 8, 8000f, 1000f, null, base.startedAt(), null, 0, null);
+        final var fm7 = new SessionMeta(UUID.randomUUID(), "FM7-Dash", 3667, 5, 800, 2, 8, 8000f, 1000f, null, base.startedAt(), null, 0, null);
+        when(sessionRepository.findById(unknown.id())).thenReturn(java.util.Optional.of(unknown));
+        when(sessionRepository.findById(fm7.id())).thenReturn(java.util.Optional.of(fm7));
+
+        assertThat(service.get(unknown.id()).carName()).isNull();
+        assertThat(service.get(fm7.id()).carName()).isNull();
+    }
+
+    @Test
+    void list_includesCarNameForEachSession() {
+        final var base = sessionAt(Instant.parse("2026-10-03T12:00:00Z"));
+        final var meta = new SessionMeta(base.id(), "FH4/FH5/FH6", 3667, 5, 800, 2, 8, 8000f, 1000f, null, base.startedAt(), null, 0, null);
+        when(sessionRepository.findPage(any(), any(), anyInt())).thenReturn(List.of(meta));
+
+        assertThat(service.list(null, 20).items()).extracting("carName").containsExactly("2021 Porsche 911 GT3");
     }
 }

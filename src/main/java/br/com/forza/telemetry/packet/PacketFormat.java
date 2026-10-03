@@ -51,6 +51,16 @@ public enum PacketFormat {
         return tireWear;
     }
 
+    /** Pelo rótulo ({@link #label()}), como gravado em {@code sessions.game_format}. */
+    public static Optional<PacketFormat> fromLabel(final String label) {
+        for (final PacketFormat format : values()) {
+            if (format.label.equals(label)) {
+                return Optional.of(format);
+            }
+        }
+        return Optional.empty();
+    }
+
     public static Optional<PacketFormat> fromSize(final int size) {
         for (final PacketFormat format : values()) {
             if (format.size == size) {

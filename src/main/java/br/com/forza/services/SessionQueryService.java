@@ -10,6 +10,7 @@ import br.com.forza.models.entities.SessionMeta;
 import br.com.forza.repositories.LapRepository;
 import br.com.forza.repositories.SampleRepository;
 import br.com.forza.repositories.SessionRepository;
+import br.com.forza.telemetry.CarCatalog;
 import br.com.forza.telemetry.summary.SummaryCalculator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -34,17 +35,20 @@ public class SessionQueryService {
     private final SampleRepository sampleRepository;
     private final SummaryCalculator summaryCalculator;
     private final ObjectMapper objectMapper;
+    private final CarCatalog carCatalog;
 
     public SessionQueryService(final SessionRepository sessionRepository,
                                final LapRepository lapRepository,
                                final SampleRepository sampleRepository,
                                final SummaryCalculator summaryCalculator,
-                               final ObjectMapper objectMapper) {
+                               final ObjectMapper objectMapper,
+                               final CarCatalog carCatalog) {
         this.sessionRepository = sessionRepository;
         this.lapRepository = lapRepository;
         this.sampleRepository = sampleRepository;
         this.summaryCalculator = summaryCalculator;
         this.objectMapper = objectMapper;
+        this.carCatalog = carCatalog;
     }
 
     /** Cursor opaco = base64url("{epochMicros}|{uuid}") da última sessão da página anterior. */
@@ -64,11 +68,11 @@ public class SessionQueryService {
         final boolean hasMore = found.size() > size;
         final List<SessionMeta> page = hasMore ? found.subList(0, size) : found;
         final String next = hasMore ? encodeCursor(page.get(page.size() - 1)) : null;
-        return new SessionPageDTO(page.stream().map(SessionDTO::from).toList(), next);
+        return new SessionPageDTO(page.stream().map(this::toDto).toList(), next);
     }
 
     public SessionDTO get(final UUID id) {
-        return SessionDTO.from(require(id));
+        return toDto(require(id));
     }
 
     public List<LapDTO> laps(final UUID id) {
@@ -94,6 +98,10 @@ public class SessionQueryService {
         require(id);
         final int limit = Math.max(1, Math.min(requestedLimit, MAX_SAMPLES));
         return sampleRepository.findRange(id, Math.max(0, fromMs), toMs, limit).stream().map(SampleDTO::from).toList();
+    }
+
+    private SessionDTO toDto(final SessionMeta meta) {
+        return SessionDTO.from(meta, carCatalog.nameOf(meta.gameFormat(), meta.carOrdinal()).orElse(null));
     }
 
     private SessionMeta require(final UUID id) {
