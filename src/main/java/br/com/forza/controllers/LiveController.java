@@ -2,10 +2,14 @@ package br.com.forza.controllers;
 
 import br.com.forza.config.TelemetryProperties;
 import br.com.forza.exceptions.ResourceNotFoundException;
+import br.com.forza.models.dto.LiveInfoDTO;
 import br.com.forza.models.dto.LiveSnapshotDTO;
 import br.com.forza.telemetry.ingest.LiveSnapshot;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import java.util.Arrays;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,10 +21,23 @@ public class LiveController {
 
     private final LiveSnapshot liveSnapshot;
     private final TelemetryProperties properties;
+    private final List<String> advertisedHosts;
+    private final int advertisedPort;
 
-    public LiveController(final LiveSnapshot liveSnapshot, final TelemetryProperties properties) {
+    public LiveController(final LiveSnapshot liveSnapshot,
+                          final TelemetryProperties properties,
+                          @Value("${telemetry.advertised-hosts:}") final String advertisedHosts,
+                          @Value("${telemetry.advertised-port:${telemetry.udp.port:5310}}") final int advertisedPort) {
         this.liveSnapshot = liveSnapshot;
         this.properties = properties;
+        this.advertisedHosts = Arrays.stream(advertisedHosts.split(",")).map(String::trim).filter(host -> !host.isEmpty()).toList();
+        this.advertisedPort = advertisedPort;
+    }
+
+    /** IP(s) e porta UDP pra configurar no Data Out do jogo (IP vazio = não configurado no serviço). */
+    @GetMapping("/info")
+    public ResponseEntity<LiveInfoDTO> info() {
+        return ResponseEntity.ok(new LiveInfoDTO(advertisedHosts, advertisedPort));
     }
 
     /** Último pacote recebido; 404 se nada chegou nos últimos {@code telemetry.live-stale-after}. */
