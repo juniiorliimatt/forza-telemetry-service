@@ -45,8 +45,14 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 
 ## Recomendação de tuning (`br.com.forza.tuning`)
 - Escopo: família **Horizon** (FH4/FH5/FH6 usam o mesmo pacote de 324 bytes, então o jogo não é distinguido — o
-  card do front diz "FH6"). `TuningService` pega as sessões **encerradas com resumo** de um carro, só as
-  iniciadas após o **marco de coleta** (`tuning_checkpoints`, `POST /tuning/cars/{ordinal}/checkpoint`) e só as
+  card do front diz "FH6"). **A coleta é por carro E classe de PI** (`PerformanceClass`, faixas do FH6 em
+  forzahorizonhub.com: D 100–400, C 401–500, B 501–600, A 601–700, S1 701–800, S2 801–900, R 901–998): cada classe é
+  uma build, então o mesmo carro em PI 416 (C) e 700 (A) são duas coletas e duas recomendações, e **mudar de classe
+  fecha a sessão** (`IngestWorker.changesSession`); mudar o PI dentro da classe não. Rotas
+  `/tuning/cars/{ordinal}/{classe}` e `.../{classe}/checkpoint` (o marco também é por classe; a migração 261006
+  replicou os marcos antigos para as 7 classes). `TuningService` pega as sessões **encerradas com resumo** do carro
+  naquela classe, só as
+  iniciadas após o **marco de coleta** (`tuning_checkpoints`) e só as
   `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (50000
   amostras = 10 sessões cheias de 5000) — contagem de sessões sozinha não basta, uma sessão pode ter poucas amostras.
 - `TuningAggregator` combina os resumos ponderando por amostras; `TuningAdvisor` aplica as regras

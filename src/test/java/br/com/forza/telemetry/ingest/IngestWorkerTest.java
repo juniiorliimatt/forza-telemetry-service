@@ -281,6 +281,43 @@ class IngestWorkerTest {
         assertThat(closed.getAllValues()).containsExactly(3, 3, 2);   // 8 amostras gravadas de 18 pacotes — não 18 amostras
     }
 
+    private static byte[] drivingWithPi(final int pi) {
+        return PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).car(1234, 3, pi, 1, 8).build();
+    }
+
+    /** Upgrade que muda a classe de PI é outra build do carro: a sessão fecha e a coleta do tuning não mistura as duas. */
+    @Test
+    void run_performanceClassChangeOnTheSameCar_closesTheSessionAndOpensAnother() {
+        final var w = defaultWorker();
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(drivingWithPi(700), i * 16 * MS));          // A
+        }
+        for (int i = 3; i < 6; i++) {
+            w.offer(raw(drivingWithPi(701), i * 16 * MS));          // S1
+        }
+
+        w.start();
+        w.stop();
+
+        final var metas = ArgumentCaptor.forClass(SessionMeta.class);
+        verify(sessionRepository, times(2)).insert(metas.capture());
+        assertThat(metas.getAllValues()).extracting(SessionMeta::performanceIndex).containsExactly(700, 701);
+        verify(sessionRepository, times(2)).close(any(), any(), eq(3), anyString());
+    }
+
+    @Test
+    void run_piChangeInsideTheSameClass_keepsTheSession() {
+        final var w = defaultWorker();
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(drivingWithPi(650 + i * 10), i * 16 * MS));   // 650, 660, 670: sempre A
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+    }
+
     @Test
     void run_onlyStationaryPackets_neverOpenASession() {
         final var w = defaultWorker();

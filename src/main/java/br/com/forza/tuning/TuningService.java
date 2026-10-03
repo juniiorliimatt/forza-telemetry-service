@@ -14,6 +14,7 @@ import br.com.forza.repositories.SessionRepository;
 import br.com.forza.repositories.TuningCheckpointRepository;
 import br.com.forza.repositories.TuningHistoryRepository;
 import br.com.forza.telemetry.CarCatalog;
+import br.com.forza.telemetry.PerformanceClass;
 import br.com.forza.telemetry.packet.PacketFormat;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,15 +71,19 @@ public class TuningService {
         this.clock = clock;
     }
 
-    /** Carros com sessões coletadas (depois do marco de cada um) e o progresso até poder recomendar. */
+    /** Um carro numa classe de PI: cada build é coletada (e recomendada) separadamente. */
+    private record CarBuild(int carOrdinal, PerformanceClass performanceClass) {
+    }
+
+    /** Carros por classe de PI com sessões coletadas (depois do marco de cada um) e o progresso até poder recomendar. */
     public List<TuningCarDTO> cars() {
-        final Map<Integer, List<SessionMeta>> byCar = new LinkedHashMap<>();
+        final Map<CarBuild, List<SessionMeta>> byBuild = new LinkedHashMap<>();
         for (final SessionMeta meta : sessionRepository.findClosedMeta(GAME_FORMAT)) {
-            byCar.computeIfAbsent(meta.carOrdinal(), k -> new ArrayList<>()).add(meta);
+            byBuild.computeIfAbsent(new CarBuild(meta.carOrdinal(), PerformanceClass.of(meta.performanceIndex())), k -> new ArrayList<>()).add(meta);
         }
         final List<TuningCarDTO> cars = new ArrayList<>();
-        byCar.forEach((ordinal, all) -> {
-            final Instant since = checkpointRepository.find(GAME_FORMAT, ordinal).orElse(Instant.EPOCH);
+        byBuild.forEach((build, all) -> {
+            final Instant since = checkpointRepository.find(GAME_FORMAT, build.carOrdinal(), build.performanceClass()).orElse(Instant.EPOCH);
             final List<SessionMeta> window = all.stream().filter(s -> !s.startedAt().isBefore(since)).limit(properties.maxSessions()).toList();
             if (window.isEmpty()) {
                 return;
@@ -86,16 +91,17 @@ public class TuningService {
             final SessionMeta latest = window.get(0);
             final long samples = window.stream().mapToLong(SessionMeta::sampleCount).sum();
             final boolean ready = window.size() >= properties.minSessions() && samples >= properties.minSamples();
-            cars.add(new TuningCarDTO(ordinal, carName(latest), latest.carClass(), latest.performanceIndex(), SessionDTO.from(latest).drivetrain(),
-                    window.size(), samples, properties.minSessions(), ready, latest.startedAt()));
+            cars.add(new TuningCarDTO(build.carOrdinal(), carName(latest), latest.carClass(), latest.performanceIndex(), build.performanceClass().name(),
+                    SessionDTO.from(latest).drivetrain(), window.size(), samples, properties.minSessions(), ready, latest.startedAt()));
         });
         cars.sort(Comparator.comparing(TuningCarDTO::lastSessionAt).reversed());
         return cars;
     }
 
-    public TuningRecommendationDTO recommendation(final int carOrdinal) {
-        final Optional<Instant> checkpoint = checkpointRepository.find(GAME_FORMAT, carOrdinal);
-        final List<SessionMeta> metas = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, checkpoint.orElse(Instant.EPOCH), properties.maxSessions());
+    public TuningRecommendationDTO recommendation(final int carOrdinal, final PerformanceClass performanceClass) {
+        final Optional<Instant> checkpoint = checkpointRepository.find(GAME_FORMAT, carOrdinal, performanceClass);
+        final List<SessionMeta> metas = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH),
+                properties.maxSessions());
         if (metas.isEmpty()) {
             throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
         }
@@ -115,12 +121,12 @@ public class TuningService {
         final String drivetrain = SessionDTO.from(latest).drivetrain();
 
         if (!readiness.ready()) {
-            return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), drivetrain, readiness,
-                    windowFrom, windowTo, checkpoint.orElse(null), List.of(), List.of());
+            return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(), drivetrain,
+                    readiness, windowFrom, windowTo, checkpoint.orElse(null), List.of(), List.of());
         }
         final TuningAdvisor.Advice advice = advisor.advise(aggregate, latest.drivetrain());
-        return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), drivetrain, readiness,
-                windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle());
+        return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(), drivetrain,
+                readiness, windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle());
     }
 
     /**
@@ -129,15 +135,16 @@ public class TuningService {
      * salvar não descarta a coleta (o marco não se move).
      */
     @Transactional
-    public void resetCollection(final int carOrdinal) {
-        saveToHistory(carOrdinal);
-        checkpointRepository.upsert(GAME_FORMAT, carOrdinal, clock.instant());
+    public void resetCollection(final int carOrdinal, final PerformanceClass performanceClass) {
+        saveToHistory(carOrdinal, performanceClass);
+        checkpointRepository.upsert(GAME_FORMAT, carOrdinal, performanceClass, clock.instant());
     }
 
     /** Tunings salvos, do mais recente para o mais antigo. */
     public List<TuningHistoryItemDTO> history() {
         return historyRepository.findAll(GAME_FORMAT).stream()
-                .map(e -> new TuningHistoryItemDTO(e.id(), e.carOrdinal(), e.carName(), e.carClass(), e.performanceIndex(), e.drivetrain(),
+                .map(e -> new TuningHistoryItemDTO(e.id(), e.carOrdinal(), e.carName(), e.carClass(), e.performanceIndex(),
+                        PerformanceClass.of(e.performanceIndex()).name(), e.drivetrain(),
                         e.createdAt(), e.windowFrom(), e.windowTo(), e.sessions(), e.samples(), e.adjustments()))
                 .toList();
     }
@@ -147,16 +154,26 @@ public class TuningService {
         final TuningHistoryRepository.Entry entry = historyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tuning salvo não encontrado: " + id));
         try {
-            return new TuningHistoryDTO(entry.id(), entry.createdAt(), objectMapper.readValue(entry.recommendationJson(), TuningRecommendationDTO.class));
+            return new TuningHistoryDTO(entry.id(), entry.createdAt(), withClass(objectMapper.readValue(entry.recommendationJson(), TuningRecommendationDTO.class)));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Tuning salvo ilegível: " + id, e);
         }
     }
 
-    private void saveToHistory(final int carOrdinal) {
+    /** Fotos salvas antes da separação por classe não trazem {@code performanceClass}: deriva do PI gravado. */
+    private static TuningRecommendationDTO withClass(final TuningRecommendationDTO rec) {
+        if (rec.performanceClass() != null) {
+            return rec;
+        }
+        return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(),
+                PerformanceClass.of(rec.performanceIndex()).name(), rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(),
+                rec.checkpointAt(), rec.guides(), rec.thisCycle());
+    }
+
+    private void saveToHistory(final int carOrdinal, final PerformanceClass performanceClass) {
         final TuningRecommendationDTO rec;
         try {
-            rec = recommendation(carOrdinal);
+            rec = recommendation(carOrdinal, performanceClass);
         } catch (ResourceNotFoundException e) {
             return;
         }

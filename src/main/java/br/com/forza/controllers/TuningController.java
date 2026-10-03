@@ -4,6 +4,7 @@ import br.com.forza.models.dto.TuningCarDTO;
 import br.com.forza.models.dto.TuningHistoryDTO;
 import br.com.forza.models.dto.TuningHistoryItemDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO;
+import br.com.forza.telemetry.PerformanceClass;
 import br.com.forza.tuning.TuningService;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -39,13 +40,16 @@ public class TuningController {
         return ResponseEntity.ok(tuningService.cars());
     }
 
-    /** Recomendação do carro: todas as guias de tuning e os (até 3) ajustes do ciclo atual — ou o que falta pra gerar. */
-    @GetMapping("/cars/{carOrdinal}")
+    /**
+     * Recomendação do carro numa classe de PI (cada classe é uma build): todas as guias de tuning e os (até 3)
+     * ajustes do ciclo atual — ou o que falta pra gerar.
+     */
+    @GetMapping("/cars/{carOrdinal}/{performanceClass}")
     @ApiResponse(responseCode = "200", description = "Recomendação (ou o que falta pra gerá-la)",
             content = @Content(schema = @Schema(implementation = TuningRecommendationDTO.class)))
-    @ApiResponse(responseCode = "404", description = "Nenhuma sessão coletada para o carro", content = @Content(mediaType = "application/problem+json"))
-    public ResponseEntity<TuningRecommendationDTO> recommendation(@PathVariable final int carOrdinal) {
-        return ResponseEntity.ok(tuningService.recommendation(carOrdinal));
+    @ApiResponse(responseCode = "404", description = "Nenhuma sessão coletada para o carro nessa classe", content = @Content(mediaType = "application/problem+json"))
+    public ResponseEntity<TuningRecommendationDTO> recommendation(@PathVariable final int carOrdinal, @PathVariable final PerformanceClass performanceClass) {
+        return ResponseEntity.ok(tuningService.recommendation(carOrdinal, performanceClass));
     }
 
     /** Tunings já feitos (fotos gravadas ao reiniciar a coleta de um carro), do mais recente para o mais antigo. */
@@ -63,12 +67,12 @@ public class TuningController {
     }
 
     /**
-     * Reinicia a coleta do carro (use depois de aplicar ajustes no jogo): só sessões novas passam a contar. Se a
-     * recomendação já estava pronta, ela é salva no histórico antes.
+     * Reinicia a coleta do carro nessa classe de PI (use depois de aplicar ajustes no jogo): só sessões novas passam a
+     * contar. Se a recomendação já estava pronta, ela é salva no histórico antes. Não afeta as outras classes do carro.
      */
-    @PostMapping("/cars/{carOrdinal}/checkpoint")
+    @PostMapping("/cars/{carOrdinal}/{performanceClass}/checkpoint")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void resetCollection(@PathVariable final int carOrdinal) {
-        tuningService.resetCollection(carOrdinal);
+    public void resetCollection(@PathVariable final int carOrdinal, @PathVariable final PerformanceClass performanceClass) {
+        tuningService.resetCollection(carOrdinal, performanceClass);
     }
 }

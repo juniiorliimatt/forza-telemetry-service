@@ -184,7 +184,7 @@ paths:
           description: OK
       tags:
       - tuning-controller
-  /api/v1/tuning/cars/{carOrdinal}:
+  /api/v1/tuning/cars/{carOrdinal}/{performanceClass}:
     get:
       operationId: recommendation
       parameters:
@@ -194,6 +194,19 @@ paths:
         schema:
           type: integer
           format: int32
+      - in: path
+        name: performanceClass
+        required: true
+        schema:
+          type: string
+          enum:
+          - D
+          - C
+          - B
+          - A
+          - S1
+          - S2
+          - R
       responses:
         "200":
           content:
@@ -204,10 +217,10 @@ paths:
         "404":
           content:
             application/problem+json: {}
-          description: Nenhuma sessão coletada para o carro
+          description: Nenhuma sessão coletada para o carro nessa classe
       tags:
       - tuning-controller
-  /api/v1/tuning/cars/{carOrdinal}/checkpoint:
+  /api/v1/tuning/cars/{carOrdinal}/{performanceClass}/checkpoint:
     post:
       operationId: resetCollection
       parameters:
@@ -217,6 +230,19 @@ paths:
         schema:
           type: integer
           format: int32
+      - in: path
+        name: performanceClass
+        required: true
+        schema:
+          type: string
+          enum:
+          - D
+          - C
+          - B
+          - A
+          - S1
+          - S2
+          - R
       responses:
         "204":
           description: No Content
@@ -641,6 +667,8 @@ components:
         lastSessionAt:
           type: string
           format: date-time
+        performanceClass:
+          type: string
         performanceIndex:
           type: integer
           format: int32
@@ -704,6 +732,8 @@ components:
         id:
           type: string
           format: uuid
+        performanceClass:
+          type: string
         performanceIndex:
           type: integer
           format: int32
@@ -763,6 +793,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TuningGuideDTO"
+        performanceClass:
+          type: string
         performanceIndex:
           type: integer
           format: int32

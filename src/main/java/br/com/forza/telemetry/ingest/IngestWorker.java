@@ -6,6 +6,7 @@ import br.com.forza.models.entities.SessionMeta;
 import br.com.forza.repositories.LapRepository;
 import br.com.forza.repositories.SampleRepository;
 import br.com.forza.repositories.SessionRepository;
+import br.com.forza.telemetry.PerformanceClass;
 import br.com.forza.telemetry.packet.PacketParser;
 import br.com.forza.telemetry.packet.TelemetryPacket;
 import br.com.forza.telemetry.summary.SummaryCalculator;
@@ -190,7 +191,7 @@ public class IngestWorker implements SmartLifecycle {
         }
 
         if (active != null && changesSession(packet)) {
-            closeActive("mudança de carro/pista");
+            closeActive("mudança de carro/pista/classe de PI");
         }
         // Janela cheia: fecha e a próxima abre na sequência — a menos que esteja numa corrida/evento, que espera acabar.
         if (active != null && active.storedSamples() >= properties.sessionMaxSamples() && !inRace(packet.dash())) {
@@ -231,6 +232,10 @@ public class IngestWorker implements SmartLifecycle {
     private boolean changesSession(final TelemetryPacket packet) {
         final SessionMeta meta = active.meta;
         if (packet.carOrdinal() != meta.carOrdinal()) {
+            return true;
+        }
+        // Upgrade que muda a classe de PI = outra build do carro: sessão nova, para o tuning não misturar setups.
+        if (PerformanceClass.of(packet.performanceIndex()) != PerformanceClass.of(meta.performanceIndex())) {
             return true;
         }
         final Integer track = packet.dash().trackOrdinal();

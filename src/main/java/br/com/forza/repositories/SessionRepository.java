@@ -1,6 +1,7 @@
 package br.com.forza.repositories;
 
 import br.com.forza.models.entities.SessionMeta;
+import br.com.forza.telemetry.PerformanceClass;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -87,12 +88,15 @@ public class SessionRepository {
     }
 
     /**
-     * Sessões encerradas, com resumo gravado, de um carro/família de jogo iniciadas a partir de
-     * {@code since}, mais recentes primeiro — base da recomendação de tuning.
+     * Sessões encerradas, com resumo gravado, de um carro/família de jogo e <b>classe de PI</b> iniciadas a partir de
+     * {@code since}, mais recentes primeiro — base da recomendação de tuning (cada classe é uma build diferente).
      */
-    public List<SessionMeta> findClosedForTuning(final String gameFormat, final int carOrdinal, final Instant since, final int limit) {
+    public List<SessionMeta> findClosedForTuning(final String gameFormat, final int carOrdinal, final PerformanceClass performanceClass,
+                                                 final Instant since, final int limit) {
         return jdbcTemplate.query(SELECT + " WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.game_format = ? AND s.car_ordinal = ?"
-                + " AND s.started_at >= ? ORDER BY s.started_at DESC, s.id DESC LIMIT ?", MAPPER, gameFormat, carOrdinal, utc(since), limit);
+                + " AND s.performance_index BETWEEN ? AND ?"
+                + " AND s.started_at >= ? ORDER BY s.started_at DESC, s.id DESC LIMIT ?", MAPPER, gameFormat, carOrdinal,
+                performanceClass.minPi(), performanceClass.maxPi(), utc(since), limit);
     }
 
     /** Metadados (sem o texto do resumo) das sessões encerradas com resumo de uma família de jogo. */

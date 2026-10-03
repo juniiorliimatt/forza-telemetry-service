@@ -18,6 +18,7 @@ import br.com.forza.models.dto.TuningRecommendationDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningGuideDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningReadinessDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningSuggestionDTO;
+import br.com.forza.telemetry.PerformanceClass;
 import br.com.forza.tuning.TuningService;
 import java.time.Instant;
 import java.util.List;
@@ -63,11 +64,12 @@ class TuningControllerTest {
 
     @Test
     void cars_returnsTheCarsWithProgress() throws Exception {
-        when(tuningService.cars()).thenReturn(List.of(new TuningCarDTO(3667, "2021 Porsche 911 GT3", 4, 812, "RWD", 7, 9000, 10, false, Instant.parse("2026-10-10T12:00:00Z"))));
+        when(tuningService.cars()).thenReturn(List.of(new TuningCarDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD", 7, 9000, 10, false, Instant.parse("2026-10-10T12:00:00Z"))));
 
         mockMvc.perform(get(BASE + "/cars").header("Authorization", "Bearer tok"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].carOrdinal").value(3667))
+                .andExpect(jsonPath("$[0].performanceClass").value("S2"))
                 .andExpect(jsonPath("$[0].carName").value("2021 Porsche 911 GT3"))
                 .andExpect(jsonPath("$[0].sessions").value(7))
                 .andExpect(jsonPath("$[0].requiredSessions").value(10))
@@ -78,12 +80,13 @@ class TuningControllerTest {
     void recommendation_returnsGuidesAndTheCycle() throws Exception {
         final var suggestion = new TuningSuggestionDTO(1, true, "molas", "Altura do solo traseira", "REAR", "INCREASE", "porque", "7% no fundo");
         final var guide = new TuningGuideDTO("molas", "Molas", "ADJUST", "1 ajuste sugerido", List.of("nota"), List.of(suggestion));
-        when(tuningService.recommendation(3667)).thenReturn(new TuningRecommendationDTO(3667, "2021 Porsche 911 GT3", 4, 812, "RWD",
+        when(tuningService.recommendation(3667, PerformanceClass.S2)).thenReturn(new TuningRecommendationDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD",
                 new TuningReadinessDTO(true, 12, 10, 12000, 6000, List.of()), Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-10T00:00:00Z"), null,
                 List.of(guide), List.of(suggestion)));
 
-        mockMvc.perform(get(BASE + "/cars/3667").header("Authorization", "Bearer tok"))
+        mockMvc.perform(get(BASE + "/cars/3667/S2").header("Authorization", "Bearer tok"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.performanceClass").value("S2"))
                 .andExpect(jsonPath("$.readiness.ready").value(true))
                 .andExpect(jsonPath("$.guides[0].id").value("molas"))
                 .andExpect(jsonPath("$.guides[0].suggestions[0].direction").value("INCREASE"))
@@ -92,30 +95,35 @@ class TuningControllerTest {
 
     @Test
     void recommendation_unknownCar_returnsProblemJson404() throws Exception {
-        when(tuningService.recommendation(99)).thenThrow(new ResourceNotFoundException("Carro sem sessões: 99"));
+        when(tuningService.recommendation(99, PerformanceClass.A)).thenThrow(new ResourceNotFoundException("Carro sem sessões: 99"));
 
-        mockMvc.perform(get(BASE + "/cars/99").header("Authorization", "Bearer tok"))
+        mockMvc.perform(get(BASE + "/cars/99/A").header("Authorization", "Bearer tok"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
     @Test
     void recommendation_nonNumericCar_returnsBadRequest() throws Exception {
-        mockMvc.perform(get(BASE + "/cars/abc").header("Authorization", "Bearer tok")).andExpect(status().isBadRequest());
+        mockMvc.perform(get(BASE + "/cars/abc/A").header("Authorization", "Bearer tok")).andExpect(status().isBadRequest());
     }
 
     @Test
-    void checkpoint_resetsTheCollection_returns204() throws Exception {
-        mockMvc.perform(post(BASE + "/cars/3667/checkpoint").header("Authorization", "Bearer tok")).andExpect(status().isNoContent());
+    void recommendation_unknownClass_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/cars/3667/Z9").header("Authorization", "Bearer tok")).andExpect(status().isBadRequest());
+    }
 
-        verify(tuningService).resetCollection(3667);
+    @Test
+    void checkpoint_resetsTheCollectionOfThatClass_returns204() throws Exception {
+        mockMvc.perform(post(BASE + "/cars/3667/A/checkpoint").header("Authorization", "Bearer tok")).andExpect(status().isNoContent());
+
+        verify(tuningService).resetCollection(3667, PerformanceClass.A);
     }
 
     @Test
     void checkpoint_withoutToken_returnsUnauthorizedAndDoesNotReset() throws Exception {
-        mockMvc.perform(post(BASE + "/cars/3667/checkpoint")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post(BASE + "/cars/3667/A/checkpoint")).andExpect(status().isUnauthorized());
 
-        org.mockito.Mockito.verify(tuningService, org.mockito.Mockito.never()).resetCollection(anyInt());
+        org.mockito.Mockito.verify(tuningService, org.mockito.Mockito.never()).resetCollection(anyInt(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -126,7 +134,7 @@ class TuningControllerTest {
     @Test
     void history_listsTheSavedTunings() throws Exception {
         final var id = UUID.fromString("11111111-1111-1111-1111-111111111111");
-        when(tuningService.history()).thenReturn(List.of(new TuningHistoryItemDTO(id, 1105, "1964 Aston Martin DB5 Vantage", 3, 700, "RWD",
+        when(tuningService.history()).thenReturn(List.of(new TuningHistoryItemDTO(id, 1105, "1964 Aston Martin DB5 Vantage", 3, 700, "A", "RWD",
                 Instant.parse("2026-10-03T19:50:00Z"), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), 12, 30_523L, 2)));
 
         mockMvc.perform(get(BASE + "/history").header("Authorization", "Bearer tok"))
@@ -140,7 +148,7 @@ class TuningControllerTest {
     @Test
     void historyEntry_returnsTheSavedRecommendation() throws Exception {
         final var id = UUID.fromString("11111111-1111-1111-1111-111111111111");
-        final var rec = new TuningRecommendationDTO(1105, "1964 Aston Martin DB5 Vantage", 3, 700, "RWD",
+        final var rec = new TuningRecommendationDTO(1105, "1964 Aston Martin DB5 Vantage", 3, 700, "A", "RWD",
                 new TuningReadinessDTO(true, 12, 10, 30_523, 6000, List.of()), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), null,
                 List.of(), List.of());
         when(tuningService.historyEntry(id)).thenReturn(new TuningHistoryDTO(id, Instant.parse("2026-10-03T19:50:00Z"), rec));
@@ -170,7 +178,7 @@ class TuningControllerTest {
 
     @Test
     void cors_allowsThePostPreflightFromTheFrontOrigin() throws Exception {
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options(BASE + "/cars/3667/checkpoint")
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options(BASE + "/cars/3667/A/checkpoint")
                         .header("Origin", "http://localhost:7053").header("Access-Control-Request-Method", "POST"))
                 .andExpect(status().isOk());
     }

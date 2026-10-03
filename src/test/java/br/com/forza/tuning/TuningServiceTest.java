@@ -1,5 +1,6 @@
 package br.com.forza.tuning;
 
+import static br.com.forza.telemetry.PerformanceClass.S2;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,6 +32,7 @@ import br.com.forza.repositories.SessionRepository;
 import br.com.forza.repositories.TuningCheckpointRepository;
 import br.com.forza.repositories.TuningHistoryRepository;
 import br.com.forza.telemetry.CarCatalog;
+import br.com.forza.telemetry.PerformanceClass;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -93,7 +95,7 @@ class TuningServiceTest {
         all.addAll(sessionsOf(3667, 11, 1000, 0));   // pronto (11 x 1000 = 11000)
         all.addAll(sessionsOf(1234, 3, 500, 0));     // incompleto
         when(sessions.findClosedMeta(HORIZON)).thenReturn(all);
-        when(checkpoints.find(eq(HORIZON), anyInt())).thenReturn(Optional.empty());
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
 
         final var cars = service.cars();
 
@@ -115,7 +117,7 @@ class TuningServiceTest {
     void cars_countsOnlySessionsAfterTheCheckpoint() throws Exception {
         final var all = sessionsOf(3667, 12, 1000, 0);
         when(sessions.findClosedMeta(HORIZON)).thenReturn(all);
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.of(NOW.minusSeconds(5 * 60L + 30)));   // só as 5 mais recentes (1..5 min)
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.of(NOW.minusSeconds(5 * 60L + 30)));   // só as 5 mais recentes (1..5 min)
 
         final var cars = service.cars();
 
@@ -125,10 +127,10 @@ class TuningServiceTest {
 
     @Test
     void recommendation_notEnoughSessions_explainsWhatIsMissing_andReturnsNoGuides() throws Exception {
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 7, 2000, 0));
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 7, 2000, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
 
-        final var rec = service.recommendation(3667);
+        final var rec = service.recommendation(3667, S2);
 
         assertThat(rec.readiness().ready()).isFalse();
         assertThat(rec.readiness().sessions()).isEqualTo(7);
@@ -141,10 +143,10 @@ class TuningServiceTest {
 
     @Test
     void recommendation_enoughSessionsButTooFewSamples_isNotReady_andSaysSo() throws Exception {
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 200, 0));
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 200, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
 
-        final var rec = service.recommendation(3667);
+        final var rec = service.recommendation(3667, S2);
 
         assertThat(rec.readiness().ready()).isFalse();
         assertThat(rec.readiness().samples()).isEqualTo(2400);
@@ -155,10 +157,10 @@ class TuningServiceTest {
 
     @Test
     void recommendation_ready_returnsEveryGuide_andTheCycleSuggestions() throws Exception {
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
 
-        final var rec = service.recommendation(3667);
+        final var rec = service.recommendation(3667, S2);
 
         assertThat(rec.readiness().ready()).isTrue();
         assertThat(rec.readiness().missing()).isEmpty();
@@ -170,10 +172,10 @@ class TuningServiceTest {
 
     @Test
     void recommendation_ready_withNothingToAdjust_stillListsAllGuides() throws Exception {
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 0));
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
 
-        final var rec = service.recommendation(3667);
+        final var rec = service.recommendation(3667, S2);
 
         assertThat(rec.guides()).hasSize(9);
         assertThat(rec.thisCycle()).isEmpty();
@@ -183,21 +185,21 @@ class TuningServiceTest {
     @Test
     void recommendation_asksForAtMostTheConfiguredWindow_andSinceTheCheckpoint() throws Exception {
         final var checkpoint = NOW.minusSeconds(3600);
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.of(checkpoint));
-        when(sessions.findClosedForTuning(HORIZON, 3667, checkpoint, 20)).thenReturn(sessionsOf(3667, 12, 1000, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.of(checkpoint));
+        when(sessions.findClosedForTuning(HORIZON, 3667, S2, checkpoint, 20)).thenReturn(sessionsOf(3667, 12, 1000, 0));
 
-        final var rec = service.recommendation(3667);
+        final var rec = service.recommendation(3667, S2);
 
         assertThat(rec.checkpointAt()).isEqualTo(checkpoint);
-        verify(sessions).findClosedForTuning(HORIZON, 3667, checkpoint, 20);
+        verify(sessions).findClosedForTuning(HORIZON, 3667, S2, checkpoint, 20);
     }
 
     @Test
     void recommendation_withoutCheckpoint_usesTheEpochAsSince() throws Exception {
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(HORIZON, 3667, Instant.EPOCH, 20)).thenReturn(sessionsOf(3667, 1, 1000, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(HORIZON, 3667, S2, Instant.EPOCH, 20)).thenReturn(sessionsOf(3667, 1, 1000, 0));
 
-        final var rec = service.recommendation(3667);
+        final var rec = service.recommendation(3667, S2);
 
         assertThat(rec.checkpointAt()).isNull();
     }
@@ -206,38 +208,38 @@ class TuningServiceTest {
     void recommendation_skipsSessionsWithUnreadableSummary() throws Exception {
         final var list = new ArrayList<>(sessionsOf(3667, 11, 1000, 0));
         list.add(meta(3667, 30, 1000, "{isto não é json", 1));
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(list);
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(list);
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
 
-        assertThat(service.recommendation(3667).readiness().sessions()).isEqualTo(11);
+        assertThat(service.recommendation(3667, S2).readiness().sessions()).isEqualTo(11);
     }
 
     @Test
     void recommendation_unknownCar_throwsNotFound() {
-        when(checkpoints.find(HORIZON, 99)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(99), any(), anyInt())).thenReturn(List.of());
+        when(checkpoints.find(HORIZON, 99, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(99), eq(S2), any(), anyInt())).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.recommendation(99)).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.recommendation(99, S2)).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void resetCollection_storesTheCheckpointAtNow() {
-        service.resetCollection(3667);
+        service.resetCollection(3667, S2);
 
-        verify(checkpoints).upsert(HORIZON, 3667, NOW);
+        verify(checkpoints).upsert(HORIZON, 3667, S2, NOW);
     }
 
     @Test
     void resetCollection_withAReadyRecommendation_savesItToTheHistoryBeforeMovingTheCheckpoint() throws Exception {
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
 
-        service.resetCollection(3667);
+        service.resetCollection(3667, S2);
 
         final var entry = ArgumentCaptor.forClass(TuningHistoryRepository.Entry.class);
         final var order = inOrder(history, checkpoints);
         order.verify(history).insert(entry.capture());
-        order.verify(checkpoints).upsert(HORIZON, 3667, NOW);
+        order.verify(checkpoints).upsert(HORIZON, 3667, S2, NOW);
         final var saved = entry.getValue();
         assertThat(saved.id()).isNotNull();
         assertThat(saved.gameFormat()).isEqualTo(HORIZON);
@@ -252,35 +254,35 @@ class TuningServiceTest {
 
     @Test
     void resetCollection_withoutEnoughData_savesNothingButStillMovesTheCheckpoint() throws Exception {
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 4, 1000, 9.0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 4, 1000, 9.0));
 
-        service.resetCollection(3667);
+        service.resetCollection(3667, S2);
 
         verify(history, never()).insert(any());
-        verify(checkpoints).upsert(HORIZON, 3667, NOW);
+        verify(checkpoints).upsert(HORIZON, 3667, S2, NOW);
     }
 
     @Test
     void resetCollection_withNoSessionsAtAll_savesNothingAndDoesNotFail() {
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(List.of());
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(List.of());
 
-        service.resetCollection(3667);
+        service.resetCollection(3667, S2);
 
         verify(history, never()).insert(any());
-        verify(checkpoints).upsert(HORIZON, 3667, NOW);
+        verify(checkpoints).upsert(HORIZON, 3667, S2, NOW);
     }
 
     @Test
     void resetCollection_whenSavingTheHistoryFails_doesNotMoveTheCheckpoint() throws Exception {
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
         doThrow(new IllegalStateException("banco fora")).when(history).insert(any());
 
-        assertThatThrownBy(() -> service.resetCollection(3667)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.resetCollection(3667, S2)).isInstanceOf(IllegalStateException.class);
 
-        verify(checkpoints, never()).upsert(anyString(), anyInt(), any());
+        verify(checkpoints, never()).upsert(anyString(), anyInt(), any(), any());
     }
 
     @Test
@@ -305,9 +307,9 @@ class TuningServiceTest {
 
     @Test
     void historyEntry_returnsTheRecommendationAsItWasWhenSaved() throws Exception {
-        when(checkpoints.find(HORIZON, 3667)).thenReturn(Optional.empty());
-        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
-        service.resetCollection(3667);
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        service.resetCollection(3667, S2);
         final var captured = ArgumentCaptor.forClass(TuningHistoryRepository.Entry.class);
         verify(history).insert(captured.capture());
         when(history.findById(captured.getValue().id())).thenReturn(Optional.of(captured.getValue()));
@@ -319,6 +321,95 @@ class TuningServiceTest {
         assertThat(dto.recommendation().carOrdinal()).isEqualTo(3667);
         assertThat(dto.recommendation().guides()).hasSize(9);
         assertThat(dto.recommendation().thisCycle()).hasSize(captured.getValue().adjustments());
+    }
+
+    private SessionMeta metaWithPi(final int car, final int pi, final int offsetMinutes, final int samples) throws Exception {
+        final var start = NOW.minusSeconds(offsetMinutes * 60L);
+        return new SessionMeta(UUID.randomUUID(), HORIZON, car, 3, pi, 1, 8, 8000f, 1000f, null, start, start.plusSeconds(300), samples, summaryJson(samples, 0));
+    }
+
+    @Test
+    void cars_separatesTheSameCarByPerformanceClass_oneEntryPerBuild() throws Exception {
+        final var all = new ArrayList<SessionMeta>();
+        for (int i = 1; i <= 3; i++) {
+            all.add(metaWithPi(1105, 700, i, 1000));    // A
+        }
+        for (int i = 4; i <= 5; i++) {
+            all.add(metaWithPi(1105, 416, i, 500));     // C
+        }
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(all);
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
+
+        final var cars = service.cars();
+
+        assertThat(cars).hasSize(2);
+        final var a = cars.stream().filter(c -> "A".equals(c.performanceClass())).findFirst().orElseThrow();
+        final var c = cars.stream().filter(x -> "C".equals(x.performanceClass())).findFirst().orElseThrow();
+        assertThat(a.sessions()).isEqualTo(3);
+        assertThat(a.samples()).isEqualTo(3000);
+        assertThat(a.performanceIndex()).isEqualTo(700);
+        assertThat(c.sessions()).isEqualTo(2);
+        assertThat(c.samples()).isEqualTo(1000);
+        assertThat(c.performanceIndex()).isEqualTo(416);
+    }
+
+    @Test
+    void cars_eachClassUsesItsOwnCheckpoint() throws Exception {
+        final var all = new ArrayList<SessionMeta>();
+        for (int i = 1; i <= 4; i++) {
+            all.add(metaWithPi(1105, 700, i, 1000));
+            all.add(metaWithPi(1105, 416, i, 1000));
+        }
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(all);
+        when(checkpoints.find(HORIZON, 1105, PerformanceClass.A)).thenReturn(Optional.of(NOW.minusSeconds(2 * 60L + 30)));   // só 1 e 2 min
+        when(checkpoints.find(HORIZON, 1105, PerformanceClass.C)).thenReturn(Optional.empty());
+
+        final var cars = service.cars();
+
+        assertThat(cars.stream().filter(c -> "A".equals(c.performanceClass())).findFirst().orElseThrow().sessions()).isEqualTo(2);
+        assertThat(cars.stream().filter(c -> "C".equals(c.performanceClass())).findFirst().orElseThrow().sessions()).isEqualTo(4);
+    }
+
+    @Test
+    void recommendation_reportsThePerformanceClassOfTheBuild() throws Exception {
+        when(checkpoints.find(HORIZON, 1105, PerformanceClass.A)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(1105), eq(PerformanceClass.A), any(), anyInt())).thenReturn(List.of(metaWithPi(1105, 700, 1, 1000)));
+
+        final var rec = service.recommendation(1105, PerformanceClass.A);
+
+        assertThat(rec.performanceClass()).isEqualTo("A");
+        assertThat(rec.performanceIndex()).isEqualTo(700);
+    }
+
+    @Test
+    void resetCollection_onlyMovesTheMarkerOfTheGivenClass() throws Exception {
+        when(checkpoints.find(HORIZON, 1105, PerformanceClass.A)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(1105), eq(PerformanceClass.A), any(), anyInt())).thenReturn(List.of());
+
+        service.resetCollection(1105, PerformanceClass.A);
+
+        verify(checkpoints).upsert(HORIZON, 1105, PerformanceClass.A, NOW);
+        verify(checkpoints, never()).upsert(eq(HORIZON), eq(1105), eq(PerformanceClass.C), any());
+    }
+
+    @Test
+    void history_exposesThePerformanceClassOfEachSavedTuning() {
+        when(history.findAll(HORIZON)).thenReturn(List.of(
+                new TuningHistoryRepository.Entry(UUID.randomUUID(), HORIZON, 1105, "Aston", 3, 700, "RWD", NOW, NOW, NOW, 10, 50_000L, 1, null),
+                new TuningHistoryRepository.Entry(UUID.randomUUID(), HORIZON, 1105, "Aston", 1, 416, "RWD", NOW, NOW, NOW, 10, 50_000L, 1, null)));
+
+        assertThat(service.history()).extracting("performanceClass").containsExactly("A", "C");
+    }
+
+    @Test
+    void historyEntry_ofASnapshotSavedBeforeClassesExisted_getsTheClassFromThePi() throws Exception {
+        final var id = UUID.randomUUID();
+        final var legacyJson = "{\"carOrdinal\":1105,\"carName\":\"Aston\",\"carClass\":3,\"performanceIndex\":700,\"drivetrain\":\"RWD\","
+                + "\"readiness\":{\"ready\":true,\"sessions\":12,\"requiredSessions\":10,\"samples\":30000,\"requiredSamples\":6000,\"missing\":[]},"
+                + "\"windowFrom\":null,\"windowTo\":null,\"checkpointAt\":null,\"guides\":[],\"thisCycle\":[]}";
+        when(history.findById(id)).thenReturn(Optional.of(new TuningHistoryRepository.Entry(id, HORIZON, 1105, "Aston", 3, 700, "RWD", NOW, NOW, NOW, 12, 30_000L, 0, legacyJson)));
+
+        assertThat(service.historyEntry(id).recommendation().performanceClass()).isEqualTo("A");
     }
 
     @Test

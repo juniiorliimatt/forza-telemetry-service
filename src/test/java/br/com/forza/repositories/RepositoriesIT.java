@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.forza.models.entities.SessionMeta;
 import br.com.forza.support.Fixtures;
+import br.com.forza.telemetry.PerformanceClass;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -240,8 +241,12 @@ class RepositoriesIT {
     }
 
     private SessionMeta closedSession(final int car, final String format, final Instant startedAt, final String summaryJson) {
+        return closedSession(car, format, 800, startedAt, summaryJson);
+    }
+
+    private SessionMeta closedSession(final int car, final String format, final int pi, final Instant startedAt, final String summaryJson) {
         final var base = Fixtures.session(UUID.randomUUID(), 1, null);
-        final var meta = new SessionMeta(base.id(), format, car, 4, 800, 1, 8, 8000f, 1000f, null, startedAt, null, 0, null);
+        final var meta = new SessionMeta(base.id(), format, car, 4, pi, 1, 8, 8000f, 1000f, null, startedAt, null, 0, null);
         sessions.insert(meta);
         sessions.close(meta.id(), startedAt.plusSeconds(60), 100, summaryJson);
         return meta;
@@ -259,14 +264,34 @@ class RepositoriesIT {
         closedSession(111, "FH4/FH5/FH6", base.plusSeconds(2000), "{\"samples\":5}");    // outro carro
         sessions.insert(newSession(base.plusSeconds(2100)));                              // ativa
 
-        final var all = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, Instant.EPOCH, 10);
-        final var since = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, base.plusSeconds(300), 10);
-        final var limited = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, Instant.EPOCH, 2);
+        final var all = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, PerformanceClass.S1, Instant.EPOCH, 10);
+        final var since = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, PerformanceClass.S1, base.plusSeconds(300), 10);
+        final var limited = sessions.findClosedForTuning("FH4/FH5/FH6", 3667, PerformanceClass.S1, Instant.EPOCH, 2);
 
         assertThat(all).extracting(SessionMeta::id).containsExactly(recent.id(), mid.id(), old.id());
         assertThat(all.get(0).summaryJson()).contains("\"samples\"");
         assertThat(since).extracting(SessionMeta::id).containsExactly(recent.id(), mid.id());
         assertThat(limited).extracting(SessionMeta::id).containsExactly(recent.id(), mid.id());
+    }
+
+    @Test
+    void tuning_findClosedForTuning_separatesBuildsByPerformanceClass_boundariesIncluded() {
+        jdbc.update("DELETE FROM forza.sessions");
+        final var base = Instant.parse("2026-11-05T10:00:00Z");
+        final var a600 = closedSession(1105, "FH4/FH5/FH6", 601, base, "{\"samples\":1}");              // A (piso)
+        final var a700 = closedSession(1105, "FH4/FH5/FH6", 700, base.plusSeconds(600), "{\"samples\":2}");   // A (teto)
+        final var s1 = closedSession(1105, "FH4/FH5/FH6", 701, base.plusSeconds(1200), "{\"samples\":3}");    // S1 (piso)
+        final var c = closedSession(1105, "FH4/FH5/FH6", 416, base.plusSeconds(1800), "{\"samples\":4}");     // C
+
+        final var classA = sessions.findClosedForTuning("FH4/FH5/FH6", 1105, PerformanceClass.A, Instant.EPOCH, 10);
+        final var classS1 = sessions.findClosedForTuning("FH4/FH5/FH6", 1105, PerformanceClass.S1, Instant.EPOCH, 10);
+        final var classC = sessions.findClosedForTuning("FH4/FH5/FH6", 1105, PerformanceClass.C, Instant.EPOCH, 10);
+        final var classR = sessions.findClosedForTuning("FH4/FH5/FH6", 1105, PerformanceClass.R, Instant.EPOCH, 10);
+
+        assertThat(classA).extracting(SessionMeta::id).containsExactly(a700.id(), a600.id());
+        assertThat(classS1).extracting(SessionMeta::id).containsExactly(s1.id());
+        assertThat(classC).extracting(SessionMeta::id).containsExactly(c.id());
+        assertThat(classR).isEmpty();
     }
 
     @Test
@@ -285,15 +310,25 @@ class RepositoriesIT {
     }
 
     @Test
-    void tuning_checkpoints_upsertAndFindPerCarAndFormat() {
-        assertThat(checkpoints.find("FH4/FH5/FH6", 777)).isEmpty();
+    void tuning_checkpoints_upsertAndFindPerCarClassAndFormat() {
+        assertThat(checkpoints.find("FH4/FH5/FH6", 777, PerformanceClass.A)).isEmpty();
 
-        checkpoints.upsert("FH4/FH5/FH6", 777, Instant.parse("2026-11-03T10:00:00Z"));
-        checkpoints.upsert("FH4/FH5/FH6", 777, Instant.parse("2026-11-04T10:00:00.123456Z"));
+        checkpoints.upsert("FH4/FH5/FH6", 777, PerformanceClass.A, Instant.parse("2026-11-03T10:00:00Z"));
+        checkpoints.upsert("FH4/FH5/FH6", 777, PerformanceClass.A, Instant.parse("2026-11-04T10:00:00.123456Z"));
 
-        assertThat(checkpoints.find("FH4/FH5/FH6", 777)).contains(Instant.parse("2026-11-04T10:00:00.123456Z"));
-        assertThat(checkpoints.find("FM2023-Dash", 777)).isEmpty();
-        assertThat(checkpoints.find("FH4/FH5/FH6", 778)).isEmpty();
+        assertThat(checkpoints.find("FH4/FH5/FH6", 777, PerformanceClass.A)).contains(Instant.parse("2026-11-04T10:00:00.123456Z"));
+        assertThat(checkpoints.find("FH4/FH5/FH6", 777, PerformanceClass.S1)).as("outra classe do mesmo carro").isEmpty();
+        assertThat(checkpoints.find("FM2023-Dash", 777, PerformanceClass.A)).isEmpty();
+        assertThat(checkpoints.find("FH4/FH5/FH6", 778, PerformanceClass.A)).isEmpty();
+    }
+
+    @Test
+    void tuning_checkpoints_eachClassOfTheSameCarKeepsItsOwnMarker() {
+        checkpoints.upsert("FH4/FH5/FH6", 790, PerformanceClass.A, Instant.parse("2026-11-03T10:00:00Z"));
+        checkpoints.upsert("FH4/FH5/FH6", 790, PerformanceClass.C, Instant.parse("2026-11-04T10:00:00Z"));
+
+        assertThat(checkpoints.find("FH4/FH5/FH6", 790, PerformanceClass.A)).contains(Instant.parse("2026-11-03T10:00:00Z"));
+        assertThat(checkpoints.find("FH4/FH5/FH6", 790, PerformanceClass.C)).contains(Instant.parse("2026-11-04T10:00:00Z"));
     }
 
     private static TuningHistoryRepository.Entry historyEntry(final UUID id, final String format, final Instant savedAt, final String json) {
