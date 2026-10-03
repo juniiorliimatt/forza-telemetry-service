@@ -2,6 +2,7 @@ image: eclipse-temurin:25-jdk-jammy
 
 stages:
   - test
+  - contract
   - build
 
 # docker:dind — os ITs com Testcontainers (Postgres descartável) precisam de um daemon
@@ -16,6 +17,18 @@ test:
   script:
     - chmod +x gradlew
     - ./gradlew check test
+
+contract-drift-check:
+  stage: contract
+  script:
+    - chmod +x gradlew
+    - cp openapi/openapi.yaml openapi/openapi.yaml.committed
+    - ./gradlew generateOpenApiDocs
+    - diff -u openapi/openapi.yaml.committed openapi/openapi.yaml || (echo "O contrato openapi/openapi.yaml está desatualizado. Rode './gradlew generateOpenApiDocs' e faça commit do resultado." && exit 1)
+  artifacts:
+    paths:
+      - openapi/openapi.yaml
+    expire_in: 1 week
 
 build:
   stage: build
@@ -32,6 +45,5 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   TESTCONTAINERS_RYUK_DISABLED: "true"  # container de limpeza do Testcontainers costuma travar em runners restritos
 
-# Sem contract-drift-check: generateOpenApiDocs sobe o app com profile dev e precisa de um
-# Postgres acessível. Regenerar o contrato à mão (./gradlew generateOpenApiDocs) ao mudar a API.
+# generateOpenApiDocs não precisa de Postgres (Liquibase e conexão desligados, porta 7099).
 # Sonar ainda não habilitado (ver budget-service como referência).

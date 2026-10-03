@@ -27,9 +27,9 @@
   Em banco já existente o `initdb/` não roda — criar role/schema à mão (README).
 - O client `forza-telemetry-service` precisa existir em `workbox.api_clients` (seed
   `261003_0000_seed_api_clients_forza_telemetry_service.sql` no `workbox-api`).
-- Gerar contrato: `./gradlew generateOpenApiDocs` (sobe em `dev` com
-  `--telemetry.udp.enabled=false` pra não disputar a porta 5310 com o container; precisa do
-  Postgres local).
+- Gerar contrato: `./gradlew generateOpenApiDocs` — **sem Postgres e sem disputar portas**
+  (Liquibase e conexão desligados, UDP off, porta 7099); servidor relativo `/` no contrato.
+  O CI roda `contract-drift-check` com ele.
 
 ## Estrutura (`br.com.forza`)
 `config/` (`SecurityConfig`, `TelemetryProperties`, `WorkboxTokenIntrospector`) ·

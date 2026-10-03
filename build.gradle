@@ -22,16 +22,25 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-// Contrato de API (OpenAPI) versionado no repositório — gerado sob demanda (@openapi).
-// Sobe a app com o profile dev (precisa do Postgres local em localhost:7050) e com o
-// listener UDP desligado, pra não disputar a porta 5310 com o container.
+// Contrato de API (OpenAPI) versionado no repositório — fonte da verdade para qualquer
+// client (frontend, agentes de IA). Gerado sem depender de Postgres nem de rede: Liquibase
+// desligado e pool Hikari sem conexão inicial (initialization-fail-timeout=-1; o
+// JdbcTemplate só precisa existir pra montar os beans), listener UDP desligado. Porta 7099
+// pra não disputar a 7057 com o container local.
 openApi {
-    apiDocsUrl.set("http://localhost:7057/v3/api-docs.yaml")
+    apiDocsUrl.set("http://localhost:7099/v3/api-docs.yaml")
     outputDir.set(file("$rootDir/openapi"))
     outputFileName.set("openapi.yaml")
-    waitTimeInSeconds.set(30)
+    waitTimeInSeconds.set(60)
     customBootRun {
-        args.set(["--spring.profiles.active=dev", "--telemetry.udp.enabled=false"])
+        args.set([
+                "--spring.profiles.active=dev",
+                "--server.port=7099",
+                "--telemetry.udp.enabled=false",
+                "--spring.liquibase.enabled=false",
+                "--spring.datasource.url=jdbc:postgresql://localhost:1/sem-banco",
+                "--spring.datasource.hikari.initialization-fail-timeout=-1"
+        ])
     }
 }
 

@@ -1,10 +1,9 @@
 openapi: 3.1.0
 info:
-  title: OpenAPI definition
-  version: v0
+  title: forza-telemetry-service
+  version: v1
 servers:
-- description: Generated server url
-  url: http://localhost:7057
+- url: /
 paths:
   /api/v1/live/snapshot:
     get:

@@ -91,10 +91,10 @@ mudanças de mola, barra, diferencial, freio, câmbio e pressão).
 
 ## Pendências conhecidas
 
-- `openapi/openapi.yaml` versionado, mas sem `contract-drift-check` no CI (a geração precisa de
-  Postgres): regenerar à mão ao mudar a API. O resumo de tuning tem schema `TuningSummaryDTO`,
+- `openapi/openapi.yaml` versionado e protegido por `contract-drift-check` no CI; a geração
+  (`./gradlew generateOpenApiDocs`) não precisa de Postgres. Regenerar ao mudar a API. O resumo de tuning tem schema `TuningSummaryDTO`,
   mantido em sincronia com o `SummaryCalculator` por teste.
-- CI com `test` (dind, por causa dos ITs com Testcontainers) e `build`; ainda sem Sonar.
+- CI com `test` (dind, por causa dos ITs com Testcontainers), `contract-drift-check` e `build`; ainda sem Sonar.
 - UDP não tem autenticação: qualquer host da LAN que alcance a porta consegue injetar pacotes.
   Restrinja no firewall ao IP do Xbox.
 - O parser foi validado contra pacotes sintéticos montados com o layout da documentação
