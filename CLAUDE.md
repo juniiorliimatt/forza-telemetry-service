@@ -91,7 +91,7 @@ Rotas: `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
 DELETE CASCADE`). Índice `idx_sessions_started_at_id` sustenta a paginação por cursor.
 
 ## Testes (test-first)
-- 137 testes (JUnit 5 + AssertJ + Mockito nas fronteiras de I/O), `./gradlew test`:
+- 153 testes (JUnit 5 + AssertJ + Mockito nas fronteiras de I/O), `./gradlew test`:
   `PacketParserTest`/`PacketFormatTest` (pacotes sintéticos de `support/PacketBuilder`),
   `SummaryCalculatorTest`, `SessionQueryServiceTest` (cursor, clamps, resumo),
   `IngestWorkerTest` (sessões, voltas, downsample, descarte, retentativas — pela thread
@@ -99,11 +99,15 @@ DELETE CASCADE`). Índice `idx_sessions_started_at_id` sustenta a paginação po
   `OpaqueTokenIntrospector` é mockado), `WorkboxTokenIntrospectorTest` (MockRestServiceServer).
 - `PacketBuilder` fixa os offsets do Dash (244 Horizon / 232 FM) **de propósito, sem ler o
   enum** — senão o teste do parser seria circular. Mantenha assim.
-- **Lacunas**: repositórios JDBC (`SessionRepository`, `SampleRepository`, `LapRepository`)
-  sem IT contra Postgres real — exigiria Testcontainers (dependência nova → confirmar) —
-  e o parser ainda não foi validado com **captura real** do jogo (principalmente FH6).
-- Limitação documentada em teste: se o flush **final** (no fechamento) falha, as amostras
-  pendentes se perdem e a sessão fica sem `ended_at`/resumo no banco.
+- `RepositoriesIT` (Testcontainers, **exige Docker**): repositórios JDBC contra Postgres 18
+  real com role/schema restritos e as migrations reais (arrays `REAL[]`, keyset, upsert,
+  cascade).
+- `TuningSummaryDTOTest` mantém o schema `TuningSummaryDTO` (OpenAPI) idêntico ao mapa do
+  `SummaryCalculator` — mudou o cálculo, mude o DTO e o front.
+- **Fechamento**: o flush final tem 3 tentativas; se falhar de vez, a sessão fecha com o que já
+  foi gravado (ou é descartada abaixo do mínimo) — nunca fica aberta no banco; as amostras
+  pendentes são perdidas e logadas.
+- **Lacuna**: o parser ainda não foi validado com **captura real** do jogo (principalmente FH6).
 
 ## Convenção Java deste repo
 - Seguir o estilo já adotado: `final` em parâmetros/locais, Javadoc em português.

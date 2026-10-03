@@ -10,12 +10,10 @@ paths:
     get:
       operationId: snapshot
       responses:
-        "200":
+        "404":
           content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/LiveSnapshotDTO"
-          description: OK
+            application/problem+json: {}
+          description: Nenhum pacote recente
       tags:
       - live-controller
   /api/v1/sessions:
@@ -35,12 +33,10 @@ paths:
           format: int32
           default: 20
       responses:
-        "200":
+        "400":
           content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/SessionPageDTO"
-          description: OK
+            application/problem+json: {}
+          description: Cursor inválido
       tags:
       - session-controller
   /api/v1/sessions/{id}:
@@ -54,12 +50,10 @@ paths:
           type: string
           format: uuid
       responses:
-        "200":
+        "404":
           content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/SessionDTO"
-          description: OK
+            application/problem+json: {}
+          description: Sessão não encontrada
       tags:
       - session-controller
   /api/v1/sessions/{id}/laps:
@@ -139,13 +133,103 @@ paths:
           content:
             '*/*':
               schema:
-                type: object
-                additionalProperties: {}
-          description: OK
+                $ref: "#/components/schemas/TuningSummaryDTO"
+          description: Resumo de tuning
+        "404":
+          content:
+            application/problem+json: {}
+          description: Sessão não encontrada
       tags:
       - session-controller
 components:
   schemas:
+    Braking:
+      type: object
+      properties:
+        frontLockPct:
+          type: number
+          format: double
+        rearLockPct:
+          type: number
+          format: double
+        samples:
+          type: integer
+          format: int32
+    CornerBalance:
+      type: object
+      properties:
+        entry:
+          $ref: "#/components/schemas/CornerPhase"
+        exit:
+          $ref: "#/components/schemas/CornerPhase"
+        mid:
+          $ref: "#/components/schemas/CornerPhase"
+        note:
+          type: string
+    CornerPhase:
+      type: object
+      properties:
+        frontSlipAngleMean:
+          type: number
+          format: double
+        oversteerPct:
+          type: number
+          format: double
+        rearSlipAngleMean:
+          type: number
+          format: double
+        samples:
+          type: integer
+          format: int32
+        understeerPct:
+          type: number
+          format: double
+    Engine:
+      type: object
+      properties:
+        boostMaxPsi:
+          type: number
+          format: double
+        gears:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Gear"
+        maxRpm:
+          type: number
+          format: double
+        peakPowerHp:
+          type: number
+          format: double
+        peakPowerRpm:
+          type: number
+          format: double
+        peakTorqueNm:
+          type: number
+          format: double
+        peakTorqueRpm:
+          type: number
+          format: double
+    Gear:
+      type: object
+      properties:
+        limiterWithThrottlePct:
+          type: number
+          format: double
+        rpmP50:
+          type: number
+          format: double
+        timePct:
+          type: number
+          format: double
+    Lap:
+      type: object
+      properties:
+        lap:
+          type: integer
+          format: int32
+        timeS:
+          type: number
+          format: double
     LapDTO:
       type: object
       properties:
@@ -155,75 +239,16 @@ components:
         lapTimeS:
           type: number
           format: float
-    LiveSnapshotDTO:
+    Laps:
       type: object
       properties:
-        accel:
-          type: integer
-          format: int32
-        bestLapS:
+        bestS:
           type: number
-          format: float
-        brake:
-          type: integer
-          format: int32
-        carOrdinal:
-          type: integer
-          format: int32
-        combinedSlip:
+          format: double
+        times:
           type: array
           items:
-            type: number
-            format: float
-        currentLapS:
-          type: number
-          format: float
-        engineMaxRpm:
-          type: number
-          format: float
-        gameFormat:
-          type: string
-        gear:
-          type: integer
-          format: int32
-        lapNumber:
-          type: integer
-          format: int32
-        lastLapS:
-          type: number
-          format: float
-        performanceIndex:
-          type: integer
-          format: int32
-        raceOn:
-          type: boolean
-        receivedAt:
-          type: string
-          format: date-time
-        rpm:
-          type: number
-          format: float
-        slipAngle:
-          type: array
-          items:
-            type: number
-            format: float
-        speedKmh:
-          type: number
-          format: float
-        steer:
-          type: integer
-          format: int32
-        suspension:
-          type: array
-          items:
-            type: number
-            format: float
-        tireTempF:
-          type: array
-          items:
-            type: number
-            format: float
+            $ref: "#/components/schemas/Lap"
     SampleDTO:
       type: object
       properties:
@@ -304,48 +329,86 @@ components:
         torque:
           type: number
           format: float
-    SessionDTO:
+    SpeedKmh:
       type: object
       properties:
-        active:
-          type: boolean
-        carClass:
-          type: integer
-          format: int32
-        carOrdinal:
-          type: integer
-          format: int32
-        cylinders:
-          type: integer
-          format: int32
-        drivetrain:
-          type: string
-        endedAt:
-          type: string
-          format: date-time
-        gameFormat:
-          type: string
-        id:
-          type: string
-          format: uuid
-        performanceIndex:
-          type: integer
-          format: int32
-        sampleCount:
-          type: integer
-          format: int32
-        startedAt:
-          type: string
-          format: date-time
-        trackOrdinal:
-          type: integer
-          format: int32
-    SessionPageDTO:
+        max:
+          type: number
+          format: double
+        meanMoving:
+          type: number
+          format: double
+    SuspensionWheel:
       type: object
       properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/SessionDTO"
-        nextCursor:
-          type: string
+        bottomingPct:
+          type: number
+          format: double
+        mean:
+          type: number
+          format: double
+        p95:
+          type: number
+          format: double
+        toppingPct:
+          type: number
+          format: double
+    TireWheel:
+      type: object
+      properties:
+        tempMeanF:
+          type: number
+          format: double
+        tempP95F:
+          type: number
+          format: double
+        wearFinal:
+          type: number
+          format: double
+    Traction:
+      type: object
+      properties:
+        drivenWheelSpinPct:
+          type: number
+          format: double
+        samples:
+          type: integer
+          format: int32
+        spinPctByGear:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+    TuningSummaryDTO:
+      type: object
+      description: Resumo de tuning de uma sessão
+      properties:
+        braking:
+          $ref: "#/components/schemas/Braking"
+        cornerBalance:
+          $ref: "#/components/schemas/CornerBalance"
+        durationS:
+          type: number
+          format: double
+        engine:
+          $ref: "#/components/schemas/Engine"
+        laps:
+          $ref: "#/components/schemas/Laps"
+        onRumbleStripPct:
+          type: number
+          format: double
+        samples:
+          type: integer
+          format: int32
+        speedKmh:
+          $ref: "#/components/schemas/SpeedKmh"
+        suspension:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SuspensionWheel"
+        tires:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/TireWheel"
+        traction:
+          $ref: "#/components/schemas/Traction"
