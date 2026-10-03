@@ -13,10 +13,9 @@
 - Autoria: padrão do monorepo é o desenvolvedor implementar; aqui há **permissão total
   temporária** pro Claude ("Claude implementa tudo", 2026-10-03). Detalhes e limites em
   [raiz → Divisão de responsabilidade](../CLAUDE.md#divisão-de-responsabilidade).
-- **Estado do repositório**: ainda sem repo no GitLab, **não registrado em
-  `.gitmodules`**, repo git local **sem nenhum commit**; sem `.gitlab-ci.yml`, sem Sonar,
-  sem testes, sem `openapi/openapi.yaml`. Não criar commit inicial, remote nem submódulo
-  sem o desenvolvedor pedir.
+- **Estado do repositório**: repo no GitLab (`sonar-group-oojuniiin/forza-telemetry-service`)
+  e espelho no GitHub, registrado como submódulo do monorepo. Ainda **sem
+  `.gitlab-ci.yml` e sem Sonar** — o `contract-drift-check` não protege o contrato.
 
 ## Stack e execução
 - Java 25 LTS, Spring Boot 3.5.16, Gradle 9.7.1 (`./gradlew`), **JDBC** (`spring-boot-starter-jdbc`,
@@ -77,6 +76,13 @@ Rotas: `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
   10000) — nunca `OFFSET`. Cursor inválido → `InvalidCursorException` (RFC 9457).
 - `/actuator/health` e Swagger são os únicos endpoints sem Bearer.
 
+## Contrato e consumidores
+- `openapi/openapi.yaml` versionado (exportado de `/v3/api-docs.yaml`). O `summary` é objeto
+  **livre** no contrato — o front (`workbox-app/src/interfaces/forza`) espelha o
+  `SummaryCalculator`; mudar o formato do resumo exige ajustar o front junto.
+- Consumidor: módulo `/forza` do `workbox-app` (sessões, detalhe e ao vivo). CORS libera só
+  `GET`/`OPTIONS` pra origem do front.
+
 ## Liquibase
 `db/changelog/changelog.yaml`; changesets em `db/changelog/v0.0.1/create/` com
 `preconditions onFail:MARK_RAN`, `rollback` e `-- comment`. Arquivo novo
@@ -84,14 +90,20 @@ Rotas: `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
 `forza.sessions`, `forza.laps`, `forza.samples` (PK composta por sessão + `t_ms`; `ON
 DELETE CASCADE`). Índice `idx_sessions_started_at_id` sustenta a paginação por cursor.
 
-## Testes (test-first) — lacuna conhecida
-- **Não há `src/test`** nem dependências de teste além de `spring-boot-starter-test`.
-  Tudo que for alterado/criado daqui pra frente nasce com teste: parser com pacotes
-  sintéticos (um por `PacketFormat`), `SummaryCalculator`, segmentação de sessão no
-  `IngestWorker`, cursor de paginação.
-- IT contra Postgres real exigiria Testcontainers (dependência nova → pedir confirmação,
-  global §3). O parser ainda não foi validado com **captura real** do jogo (principalmente
-  FH6) — dado sintético segue o layout da documentação oficial.
+## Testes (test-first)
+- 137 testes (JUnit 5 + AssertJ + Mockito nas fronteiras de I/O), `./gradlew test`:
+  `PacketParserTest`/`PacketFormatTest` (pacotes sintéticos de `support/PacketBuilder`),
+  `SummaryCalculatorTest`, `SessionQueryServiceTest` (cursor, clamps, resumo),
+  `IngestWorkerTest` (sessões, voltas, downsample, descarte, retentativas — pela thread
+  real via `start/offer/stop`), controllers com o `SecurityConfig` **real** (só o
+  `OpaqueTokenIntrospector` é mockado), `WorkboxTokenIntrospectorTest` (MockRestServiceServer).
+- `PacketBuilder` fixa os offsets do Dash (244 Horizon / 232 FM) **de propósito, sem ler o
+  enum** — senão o teste do parser seria circular. Mantenha assim.
+- **Lacunas**: repositórios JDBC (`SessionRepository`, `SampleRepository`, `LapRepository`)
+  sem IT contra Postgres real — exigiria Testcontainers (dependência nova → confirmar) —
+  e o parser ainda não foi validado com **captura real** do jogo (principalmente FH6).
+- Limitação documentada em teste: se o flush **final** (no fechamento) falha, as amostras
+  pendentes se perdem e a sessão fica sem `ended_at`/resumo no banco.
 
 ## Convenção Java deste repo
 - Seguir o estilo já adotado: `final` em parâmetros/locais, Javadoc em português.
@@ -99,4 +111,4 @@ DELETE CASCADE`). Índice `idx_sessions_started_at_id` sustenta a paginação po
 ## Commits
 pt-BR, Conventional Commits, conforme o
 [CLAUDE.md da raiz](../CLAUDE.md#convenção-de-mensagens-de-commit). Branch `develop`;
-push só com confirmação — e só depois que o repositório remoto existir.
+push só com confirmação.
