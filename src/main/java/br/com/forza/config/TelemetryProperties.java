@@ -11,6 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record TelemetryProperties(Udp udp,
                                   int sampleEvery,
                                   Duration sessionIdleTimeout,
+                                  Duration sessionStationaryTimeout,
                                   Duration flushInterval,
                                   int flushBatchSize,
                                   int minSessionSamples,

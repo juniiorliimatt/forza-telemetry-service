@@ -58,9 +58,14 @@ class IngestWorkerTest {
 
     private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
                                     final Duration idleTimeout) {
+        return workerWith(queueCapacity, sampleEvery, minSamples, idleTimeout, Duration.ofSeconds(30));
+    }
+
+    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
+                                    final Duration idleTimeout, final Duration stationaryTimeout) {
         final var properties = new TelemetryProperties(
                 new TelemetryProperties.Udp(true, 5310, queueCapacity, 65_536),
-                sampleEvery, idleTimeout, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
+                sampleEvery, idleTimeout, stationaryTimeout, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
         worker = new IngestWorker(properties, liveSnapshot, sessionRepository, lapRepository, sampleRepository,
                 new SummaryCalculator(), new ObjectMapper());
         return worker;
@@ -115,6 +120,105 @@ class IngestWorkerTest {
         verify(sessionRepository).close(eq(meta.getValue().id()), any(), eq(5), summary.capture());
         assertThat(summary.getValue()).contains("\"samples\"");
         verify(sessionRepository, never()).delete(any());
+    }
+
+    private static byte[] parked() {
+        return PacketBuilder.racing(PacketFormat.HORIZON).speed(0f).build();
+    }
+
+    private static long seconds(final int value) {
+        return TimeUnit.SECONDS.toNanos(value);
+    }
+
+    /**
+     * Na garagem o jogo continua mandando pacotes com IsRaceOn=1 e o carro parado: sem olhar a velocidade a sessão
+     * nunca fecharia. O tempo vem do carimbo dos pacotes (determinístico), não do relógio.
+     */
+    @Test
+    void run_carStoppedLongerThanTheLimit_closesTheSession_andStationaryPacketsDoNotOpenAnotherOne() {
+        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), i * 16 * MS));
+        }
+        for (int s = 1; s <= 14; s++) {
+            w.offer(raw(parked(), seconds(s)));      // para no 1º segundo; > 10 s parado no pacote de 12 s
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        final var samples = ArgumentCaptor.forClass(Integer.class);
+        verify(sessionRepository).close(any(), any(), samples.capture(), anyString());
+        assertThat(samples.getValue()).isEqualTo(3 + 11);   // 3 em movimento + parados de 1 s a 11 s; o de 12 s fecha
+    }
+
+    @Test
+    void run_afterStoppedClose_drivingAgainOpensANewSession() {
+        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), i * 16 * MS));
+        }
+        for (int s = 1; s <= 13; s++) {
+            w.offer(raw(parked(), seconds(s)));
+        }
+        w.offer(raw(racing(), seconds(20)));
+        w.offer(raw(racing(), seconds(21)));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(2)).insert(any());
+        verify(sessionRepository, times(2)).close(any(), any(), anyInt(), anyString());
+    }
+
+    @Test
+    void run_carStoppedBelowTheLimit_keepsTheSession() {
+        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), i * 16 * MS));
+        }
+        for (int s = 1; s <= 5; s++) {
+            w.offer(raw(parked(), seconds(s)));
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        assertThat(persistedSamples()).hasSize(8);
+    }
+
+    @Test
+    void run_movingAgainResetsTheStoppedCountdown() {
+        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+        w.offer(raw(racing(), 0));
+        for (int s = 1; s <= 9; s++) {
+            w.offer(raw(parked(), seconds(s)));      // 8 s parado
+        }
+        w.offer(raw(racing(), seconds(10)));          // volta a andar
+        for (int s = 11; s <= 19; s++) {
+            w.offer(raw(parked(), seconds(s)));      // outros 8 s parado: nunca passa de 10 s seguidos
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        assertThat(persistedSamples()).hasSize(20);   // nada foi cortado: a sessão seguiu aberta até o fim
+    }
+
+    @Test
+    void run_onlyStationaryPackets_neverOpenASession() {
+        final var w = workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(10));
+        for (int s = 0; s <= 30; s++) {
+            w.offer(raw(parked(), seconds(s)));
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, never()).insert(any());
     }
 
     @Test
@@ -201,10 +305,10 @@ class IngestWorkerTest {
     void run_carChange_closesCurrentSessionAndOpensAnother() {
         final var w = defaultWorker();
         for (int i = 0; i < 3; i++) {
-            w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).car(1, 5, 800, 1, 8).build(), i * 16 * MS));
+            w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).car(1, 5, 800, 1, 8).build(), i * 16 * MS));
         }
         for (int i = 3; i < 6; i++) {
-            w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).car(2, 5, 800, 1, 8).build(), i * 16 * MS));
+            w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).car(2, 5, 800, 1, 8).build(), i * 16 * MS));
         }
 
         w.start();
@@ -219,9 +323,9 @@ class IngestWorkerTest {
     @Test
     void run_trackChangeOnForzaMotorsport_closesCurrentSession() {
         final var w = defaultWorker();
-        w.offer(raw(PacketBuilder.racing(PacketFormat.FM_DASH).trackOrdinal(10).build(), 0));
-        w.offer(raw(PacketBuilder.racing(PacketFormat.FM_DASH).trackOrdinal(10).build(), 16 * MS));
-        w.offer(raw(PacketBuilder.racing(PacketFormat.FM_DASH).trackOrdinal(20).build(), 32 * MS));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.FM_DASH).speed(20f).trackOrdinal(10).build(), 0));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.FM_DASH).speed(20f).trackOrdinal(10).build(), 16 * MS));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.FM_DASH).speed(20f).trackOrdinal(20).build(), 32 * MS));
 
         w.start();
         w.stop();
@@ -232,9 +336,9 @@ class IngestWorkerTest {
     @Test
     void run_lapNumberIncrement_recordsFinishedLapTimeOfPreviousLap() {
         final var w = defaultWorker();
-        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).lapNumber(1).lapTimes(0f, 0f, 10f).build(), 0));
-        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).lapNumber(1).lapTimes(0f, 0f, 50f).build(), 16 * MS));
-        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).lapNumber(2).lapTimes(62.5f, 62.5f, 0.5f).build(), 32 * MS));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).lapNumber(1).lapTimes(0f, 0f, 10f).build(), 0));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).lapNumber(1).lapTimes(0f, 0f, 50f).build(), 16 * MS));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).lapNumber(2).lapTimes(62.5f, 62.5f, 0.5f).build(), 32 * MS));
 
         w.start();
         w.stop();
@@ -248,8 +352,8 @@ class IngestWorkerTest {
     @Test
     void run_lapNumberIncrementWithoutLastLapTime_recordsNothing() {
         final var w = defaultWorker();
-        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).lapNumber(1).build(), 0));
-        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).lapNumber(2).lapTimes(0f, 0f, 1f).build(), 16 * MS));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).lapNumber(1).build(), 0));
+        w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).lapNumber(2).lapTimes(0f, 0f, 1f).build(), 16 * MS));
 
         w.start();
         w.stop();

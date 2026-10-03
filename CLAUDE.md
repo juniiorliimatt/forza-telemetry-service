@@ -91,9 +91,12 @@ catálogo de outra família (FM7 e Sled não têm). `carName` (nulo se desconhec
   traz inputs/pneus/posição e **não é gravado**. Formato novo = entrada nova em
   `PacketFormat` + teste com pacote sintético.
 - **Sessão** = trecho contínuo com o mesmo carro (e mesma pista, no FM). Abre no primeiro
-  pacote com `IsRaceOn=1`; fecha por inatividade (`telemetry.session-idle-timeout=30s`),
-  troca de carro/pista ou shutdown. Sessões com < 100 amostras (`min-session-samples`)
-  são descartadas (ruído de menu).
+  pacote com `IsRaceOn=1` **e o carro andando** (velocidade ≥ 0,5 m/s); fecha por inatividade
+  (`telemetry.session-idle-timeout=30s`), **carro parado** por mais de `telemetry.session-stationary-timeout=30s`
+  seguidos, troca de carro/pista ou shutdown. A garagem (e menus de foto/loja) segue mandando `IsRaceOn=1` com o carro
+  parado — sem a regra de velocidade a sessão nunca fecharia e o tuning não contaria. Parado não reabre sessão; só ao
+  voltar a andar (o contador de parado usa o carimbo dos pacotes, não o relógio). Sessões com < 100 amostras
+  (`min-session-samples`) são descartadas (ruído de menu).
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s
   (`flush-interval`, `flush-batch-size=200`) com `reWriteBatchedInserts=true` na URL.
 - **JDBC em vez de JPA** de propósito (ingestão em lote de série temporal; arrays `REAL[]`

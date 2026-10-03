@@ -34,8 +34,9 @@ import org.springframework.stereotype.Component;
  * socket é pequeno e o jogo manda ~60 pacotes/s). Todo o estado de sessão é acessado só
  * por essa thread — sem locks.
  * <p>
- * Uma sessão começa no primeiro pacote com {@code IsRaceOn=1} e termina por inatividade
- * ({@code telemetry.session-idle-timeout}), troca de carro/pista ou shutdown. Sessões
+ * Uma sessão começa no primeiro pacote com {@code IsRaceOn=1} <b>e o carro andando</b> (a garagem manda
+ * {@code IsRaceOn=1} com o carro parado) e termina por inatividade ({@code telemetry.session-idle-timeout}),
+ * carro parado por tempo demais ({@code telemetry.session-stationary-timeout}), troca de carro/pista ou shutdown. Sessões
  * curtas demais ({@code telemetry.min-session-samples}) são descartadas.
  */
 @Component
@@ -46,6 +47,10 @@ public class IngestWorker implements SmartLifecycle {
     private static final long OPEN_RETRY_BACKOFF_NANOS = TimeUnit.SECONDS.toNanos(5);
     private static final long JOIN_TIMEOUT_MS = 15_000;
     private static final int CLOSE_FLUSH_ATTEMPTS = 3;
+    /** Abaixo disso (m/s) o carro conta como parado — garagem, menu, foto. */
+    private static final float STOPPED_SPEED_MS = 0.5f;
+    /** Sentinela (os carimbos em nanos podem ser 0 ou negativos): "não está parado". */
+    private static final long NOT_STOPPED = Long.MIN_VALUE;
 
     private final TelemetryProperties properties;
     private final LiveSnapshot liveSnapshot;
@@ -189,8 +194,13 @@ public class IngestWorker implements SmartLifecycle {
         if (active != null && changesSession(packet)) {
             closeActive("mudança de carro/pista");
         }
+        final boolean stopped = packet.dash().speed() < STOPPED_SPEED_MS;
+        if (active != null && stoppedTooLong(stopped, raw.receivedNanos())) {
+            closeActive("carro parado");
+        }
         if (active == null) {
-            if (raw.receivedNanos() < openRetryAfterNanos) {
+            // Na garagem o jogo segue mandando IsRaceOn=1 com o carro parado: só abre sessão quando ele anda.
+            if (stopped || raw.receivedNanos() < openRetryAfterNanos) {
                 return;
             }
             active = openSession(packet, raw.receivedNanos());
@@ -206,6 +216,18 @@ public class IngestWorker implements SmartLifecycle {
         if (active.pending.size() >= properties.flushBatchSize()) {
             flush(active, raw.receivedNanos());
         }
+    }
+
+    /** Atualiza o início do trecho parado (pelo carimbo do pacote) e diz se ele já passou do limite configurado. */
+    private boolean stoppedTooLong(final boolean stopped, final long nowNanos) {
+        if (!stopped) {
+            active.stoppedSinceNanos = NOT_STOPPED;
+            return false;
+        }
+        if (active.stoppedSinceNanos == NOT_STOPPED) {
+            active.stoppedSinceNanos = nowNanos;
+        }
+        return nowNanos - active.stoppedSinceNanos > properties.sessionStationaryTimeout().toNanos();
     }
 
     private boolean changesSession(final TelemetryPacket packet) {
@@ -355,6 +377,7 @@ public class IngestWorker implements SmartLifecycle {
         private int lastTMs = -1;
         private int lastLapNumber;
         private int persisted;
+        private long stoppedSinceNanos = NOT_STOPPED;
 
         private ActiveSession(final SessionMeta meta, final long startNanos, final int firstLapNumber) {
             this.meta = meta;

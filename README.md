@@ -80,7 +80,9 @@ mudanças de mola, barra, diferencial, freio, câmbio e pressão).
   descarta se encher); o `IngestWorker` decodifica e grava — I/O de banco nunca atrasa o
   `receive()`.
 - **Sessão** = trecho contínuo com o mesmo carro (e mesma pista, no FM). Abre no primeiro
-  pacote com `IsRaceOn=1`; fecha por inatividade (30 s), troca de carro/pista ou shutdown.
+  pacote com `IsRaceOn=1` e o carro andando; fecha por inatividade (30 s), carro parado por mais de 30 s seguidos
+  (a garagem manda `IsRaceOn=1` com o carro parado — `telemetry.session-stationary-timeout`), troca de carro/pista ou
+  shutdown.
   Sessões com menos de 100 amostras (~5 s) são descartadas.
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s.
   Unidades do jogo: velocidade em m/s, temperatura de pneu em °F, rodas na ordem FL, FR, RL, RR.
