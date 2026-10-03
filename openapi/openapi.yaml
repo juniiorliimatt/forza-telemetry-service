@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: OpenAPI definition
+  version: v0
+servers:
+- description: Generated server url
+  url: http://localhost:7057
+paths:
+  /api/v1/live/snapshot:
+    get:
+      operationId: snapshot
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/LiveSnapshotDTO"
+          description: OK
+      tags:
+      - live-controller
+  /api/v1/sessions:
+    get:
+      operationId: list
+      parameters:
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SessionPageDTO"
+          description: OK
+      tags:
+      - session-controller
+  /api/v1/sessions/{id}:
+    get:
+      operationId: findById
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SessionDTO"
+          description: OK
+      tags:
+      - session-controller
+  /api/v1/sessions/{id}/laps:
+    get:
+      operationId: laps
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LapDTO"
+          description: OK
+      tags:
+      - session-controller
+  /api/v1/sessions/{id}/samples:
+    get:
+      operationId: samples
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: fromMs
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: toMs
+        required: false
+        schema:
+          type: integer
+          format: int32
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 2000
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SampleDTO"
+          description: OK
+      tags:
+      - session-controller
+  /api/v1/sessions/{id}/summary:
+    get:
+      operationId: summary
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+          description: OK
+      tags:
+      - session-controller
+components:
+  schemas:
+    LapDTO:
+      type: object
+      properties:
+        lapNumber:
+          type: integer
+          format: int32
+        lapTimeS:
+          type: number
+          format: float
+    LiveSnapshotDTO:
+      type: object
+      properties:
+        accel:
+          type: integer
+          format: int32
+        bestLapS:
+          type: number
+          format: float
+        brake:
+          type: integer
+          format: int32
+        carOrdinal:
+          type: integer
+          format: int32
+        combinedSlip:
+          type: array
+          items:
+            type: number
+            format: float
+        currentLapS:
+          type: number
+          format: float
+        engineMaxRpm:
+          type: number
+          format: float
+        gameFormat:
+          type: string
+        gear:
+          type: integer
+          format: int32
+        lapNumber:
+          type: integer
+          format: int32
+        lastLapS:
+          type: number
+          format: float
+        performanceIndex:
+          type: integer
+          format: int32
+        raceOn:
+          type: boolean
+        receivedAt:
+          type: string
+          format: date-time
+        rpm:
+          type: number
+          format: float
+        slipAngle:
+          type: array
+          items:
+            type: number
+            format: float
+        speedKmh:
+          type: number
+          format: float
+        steer:
+          type: integer
+          format: int32
+        suspension:
+          type: array
+          items:
+            type: number
+            format: float
+        tireTempF:
+          type: array
+          items:
+            type: number
+            format: float
+    SampleDTO:
+      type: object
+      properties:
+        accel:
+          type: integer
+          format: int32
+        accelX:
+          type: number
+          format: float
+        accelZ:
+          type: number
+          format: float
+        boost:
+          type: number
+          format: float
+        brake:
+          type: integer
+          format: int32
+        combinedSlip:
+          type: array
+          items:
+            type: number
+            format: float
+        gear:
+          type: integer
+          format: int32
+        lapNumber:
+          type: integer
+          format: int32
+        onRumble:
+          type: boolean
+        posX:
+          type: number
+          format: float
+        posZ:
+          type: number
+          format: float
+        power:
+          type: number
+          format: float
+        rpm:
+          type: number
+          format: float
+        slipAngle:
+          type: array
+          items:
+            type: number
+            format: float
+        slipRatio:
+          type: array
+          items:
+            type: number
+            format: float
+        speed:
+          type: number
+          format: float
+        steer:
+          type: integer
+          format: int32
+        suspension:
+          type: array
+          items:
+            type: number
+            format: float
+        tMs:
+          type: integer
+          format: int32
+        tireTemp:
+          type: array
+          items:
+            type: number
+            format: float
+        tireWear:
+          type: array
+          items:
+            type: number
+            format: float
+        torque:
+          type: number
+          format: float
+    SessionDTO:
+      type: object
+      properties:
+        active:
+          type: boolean
+        carClass:
+          type: integer
+          format: int32
+        carOrdinal:
+          type: integer
+          format: int32
+        cylinders:
+          type: integer
+          format: int32
+        drivetrain:
+          type: string
+        endedAt:
+          type: string
+          format: date-time
+        gameFormat:
+          type: string
+        id:
+          type: string
+          format: uuid
+        performanceIndex:
+          type: integer
+          format: int32
+        sampleCount:
+          type: integer
+          format: int32
+        startedAt:
+          type: string
+          format: date-time
+        trackOrdinal:
+          type: integer
+          format: int32
+    SessionPageDTO:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionDTO"
+        nextCursor:
+          type: string
