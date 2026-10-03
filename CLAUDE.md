@@ -43,6 +43,22 @@ de dentro do container só se vê o IP docker, então o IP da LAN vem do `FORZA_
 detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
 `/{id}/samples`, `GET /api/v1/live/snapshot`.
 
+## Recomendação de tuning (`br.com.forza.tuning`)
+- Escopo: família **Horizon** (FH4/FH5/FH6 usam o mesmo pacote de 324 bytes, então o jogo não é distinguido — o
+  card do front diz "FH6"). `TuningService` pega as sessões **encerradas com resumo** de um carro, só as
+  iniciadas após o **marco de coleta** (`tuning_checkpoints`, `POST /tuning/cars/{ordinal}/checkpoint`) e só as
+  `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (6000
+  amostras ≈ 5 min a 20 Hz) — contagem de sessões sozinha não basta, uma sessão pode ter segundos.
+- `TuningAggregator` combina os resumos ponderando por amostras; `TuningAdvisor` aplica as regras
+  sintoma→ajuste da skill `forza-tuning-engineer` (matriz e limiares: bottoming > 3%, pneus 170–210 °F, eixos > 15 °F,
+  limitador na última marcha, travamento > 5%, patinagem > 15%, balanço com diferença ≥ 20 pontos e ≥ 150 amostras).
+- **Sempre as 9 guias do jogo** (Pneus, Câmbio, Alinhamento, Barras, Molas, Amortecimento, Aerodinâmica, Freios,
+  Diferencial) com status `ADJUST`/`OK`/`NO_SIGNAL`; no máximo **3 ajustes por ciclo, um por guia** (`thisCycle`).
+- **Só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição. Valores
+  absolutos exigem a skill com esses dados. Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
+  setup antigo contaminam a média. Aerodinâmica não tem sinal na telemetria (`NO_SIGNAL`).
+- Regra nova = teste em `TuningAdvisorTest` primeiro (cada limiar tem mutação coberta).
+
 ## Nome do carro
 O Data Out **não** traz o nome do carro, só `CarOrdinal`, classe, PI, tração e cilindros. `CarCatalog`
 traduz o ordinal em nome com catálogos por família de jogo (`car-catalog/horizon.json` e

@@ -170,6 +170,58 @@ paths:
           description: Sessão não encontrada
       tags:
       - session-controller
+  /api/v1/tuning/cars:
+    get:
+      operationId: cars
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TuningCarDTO"
+          description: OK
+      tags:
+      - tuning-controller
+  /api/v1/tuning/cars/{carOrdinal}:
+    get:
+      operationId: recommendation
+      parameters:
+      - in: path
+        name: carOrdinal
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TuningRecommendationDTO"
+          description: Recomendação (ou o que falta pra gerá-la)
+        "404":
+          content:
+            application/problem+json: {}
+          description: Nenhuma sessão coletada para o carro
+      tags:
+      - tuning-controller
+  /api/v1/tuning/cars/{carOrdinal}/checkpoint:
+    post:
+      operationId: resetCollection
+      parameters:
+      - in: path
+        name: carOrdinal
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - tuning-controller
 components:
   schemas:
     Braking:
@@ -536,6 +588,131 @@ components:
           additionalProperties:
             type: number
             format: double
+    TuningCarDTO:
+      type: object
+      properties:
+        carClass:
+          type: integer
+          format: int32
+        carName:
+          type: string
+        carOrdinal:
+          type: integer
+          format: int32
+        drivetrain:
+          type: string
+        lastSessionAt:
+          type: string
+          format: date-time
+        performanceIndex:
+          type: integer
+          format: int32
+        ready:
+          type: boolean
+        requiredSessions:
+          type: integer
+          format: int32
+        samples:
+          type: integer
+          format: int64
+        sessions:
+          type: integer
+          format: int32
+    TuningGuideDTO:
+      type: object
+      properties:
+        id:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/TuningSuggestionDTO"
+        summary:
+          type: string
+        title:
+          type: string
+    TuningReadinessDTO:
+      type: object
+      properties:
+        missing:
+          type: array
+          items:
+            type: string
+        ready:
+          type: boolean
+        requiredSamples:
+          type: integer
+          format: int64
+        requiredSessions:
+          type: integer
+          format: int32
+        samples:
+          type: integer
+          format: int64
+        sessions:
+          type: integer
+          format: int32
+    TuningRecommendationDTO:
+      type: object
+      properties:
+        carClass:
+          type: integer
+          format: int32
+        carName:
+          type: string
+        carOrdinal:
+          type: integer
+          format: int32
+        checkpointAt:
+          type: string
+          format: date-time
+        drivetrain:
+          type: string
+        guides:
+          type: array
+          items:
+            $ref: "#/components/schemas/TuningGuideDTO"
+        performanceIndex:
+          type: integer
+          format: int32
+        readiness:
+          $ref: "#/components/schemas/TuningReadinessDTO"
+        thisCycle:
+          type: array
+          items:
+            $ref: "#/components/schemas/TuningSuggestionDTO"
+        windowFrom:
+          type: string
+          format: date-time
+        windowTo:
+          type: string
+          format: date-time
+    TuningSuggestionDTO:
+      type: object
+      properties:
+        axle:
+          type: string
+        direction:
+          type: string
+        evidence:
+          type: string
+        guide:
+          type: string
+        parameter:
+          type: string
+        priority:
+          type: integer
+          format: int32
+        rationale:
+          type: string
+        thisCycle:
+          type: boolean
     TuningSummaryDTO:
       type: object
       description: Resumo de tuning de uma sessão

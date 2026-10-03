@@ -305,7 +305,7 @@ public class TuningAdvisor {
         final String axle = drivetrain == FWD ? "FRONT" : "REAR";
         final String axleName = drivetrain == FWD ? "dianteiro" : "traseiro";
         if (a.tractionSamples() >= MIN_TRACTION_SAMPLES && a.spinPct() > SPIN_PCT) {
-            final String worst = a.spinPctByGear().entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> "; pior na " + e.getKey() + "ª marcha (" + n(e.getValue()) + "%)").orElse("");
+            final String worst = a.spinPctByGear().entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> "; pior " + gearLabel(e.getKey()) + " (" + n(e.getValue()) + "%)").orElse("");
             out.add(new Draft("diferencial", "Diferencial " + axleName + " — aceleração", axle, "DECREASE",
                     "Patinagem das rodas motrizes ao acelerar: diferencial menos travado distribui melhor o torque.",
                     "Rodas motrizes patinando em " + n(a.spinPct()) + "% das amostras em aceleração (n=" + a.tractionSamples() + "; limite " + n(SPIN_PCT) + "%)" + worst,
@@ -358,6 +358,11 @@ public class TuningAdvisor {
 
     private static String balanceEvidence(final String phase, final String kind, final double pct, final long samples) {
         return n(pct) + "% das amostras de " + phase + " em " + kind + " (n=" + samples + ")";
+    }
+
+    /** O jogo manda marcha 0 para ré/neutro. */
+    private static String gearLabel(final String gear) {
+        return gear.equals("0") ? "em ré/neutro" : "na " + gear + "ª marcha";
     }
 
     private static String axleWord(final String axle) {

@@ -270,6 +270,15 @@ class TuningAdvisorTest {
     }
 
     @Test
+    void wheelspinEvidence_namesReverseOrNeutralInsteadOfAZeroGear() {
+        final var agg = with(b -> b.traction(700, 28.0, Map.of("0", 90.0, "2", 10.0)));
+
+        final var s = guide(advisor.advise(agg, RWD).guides(), "diferencial").suggestions();
+
+        assertThat(s.get(0).evidence()).contains("ré/neutro").doesNotContain("0ª");
+    }
+
+    @Test
     void wheelspinOnFwd_targetsTheFrontDifferential() {
         final var agg = with(b -> b.traction(700, 28.0, Map.of("1", 45.0)));
 
