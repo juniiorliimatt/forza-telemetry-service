@@ -38,7 +38,9 @@
 (JDBC) · `services/SessionQueryService` · `telemetry/`:
 `udp/UdpTelemetryListener` → fila → `ingest/IngestWorker` (+ `LiveSnapshot`) ·
 `packet/{PacketFormat, PacketParser, TelemetryPacket}` · `summary/SummaryCalculator`.
-Rotas: `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
+Rotas: `GET /api/v1/live/info` (IP(s) e porta UDP anunciados — `TELEMETRY_ADVERTISED_HOST`/`_PORT`;
+de dentro do container só se vê o IP docker, então o IP da LAN vem do `FORZA_HOST_IP` do compose,
+detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/{id}/laps`, `/{id}/summary`,
 `/{id}/samples`, `GET /api/v1/live/snapshot`.
 
 ## Pipeline de ingestão — regras que não podem quebrar

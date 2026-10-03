@@ -5,6 +5,18 @@ info:
 servers:
 - url: /
 paths:
+  /api/v1/live/info:
+    get:
+      operationId: info
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/LiveInfoDTO"
+          description: OK
+      tags:
+      - live-controller
   /api/v1/live/snapshot:
     get:
       operationId: snapshot
@@ -248,6 +260,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Lap"
+    LiveInfoDTO:
+      type: object
+      properties:
+        hostAddresses:
+          type: array
+          items:
+            type: string
+        udpPort:
+          type: integer
+          format: int32
     SampleDTO:
       type: object
       properties:
