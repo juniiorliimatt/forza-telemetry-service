@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -63,9 +64,14 @@ class IngestWorkerTest {
 
     private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
                                     final Duration idleTimeout, final Duration stationaryTimeout) {
+        return workerWith(queueCapacity, sampleEvery, minSamples, idleTimeout, stationaryTimeout, 3000);
+    }
+
+    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
+                                    final Duration idleTimeout, final Duration stationaryTimeout, final int maxSamples) {
         final var properties = new TelemetryProperties(
                 new TelemetryProperties.Udp(true, 5310, queueCapacity, 65_536),
-                sampleEvery, idleTimeout, stationaryTimeout, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
+                sampleEvery, idleTimeout, stationaryTimeout, maxSamples, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
         worker = new IngestWorker(properties, liveSnapshot, sessionRepository, lapRepository, sampleRepository,
                 new SummaryCalculator(), new ObjectMapper());
         return worker;
@@ -206,6 +212,97 @@ class IngestWorkerTest {
 
         verify(sessionRepository, times(1)).insert(any());
         assertThat(persistedSamples()).hasSize(20);   // nada foi cortado: a sessão seguiu aberta até o fim
+    }
+
+    private IngestWorker rotatingWorker(final int maxSamples) {
+        return workerWith(1000, 1, 1, Duration.ofSeconds(30), Duration.ofSeconds(30), maxSamples);
+    }
+
+    private static byte[] freeRoam() {
+        return PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).lapNumber(0).build();
+    }
+
+    private static byte[] inRace() {
+        return PacketBuilder.racing(PacketFormat.HORIZON).speed(40f).lapNumber(1).build();
+    }
+
+    /** O jogo não avisa quando o carro está na garagem: a sessão fecha sozinha ao juntar N amostras, e a próxima abre na sequência. */
+    @Test
+    void run_freeRoam_rotatesTheSessionEveryMaxSamples() {
+        final var w = rotatingWorker(3);
+        for (int i = 0; i < 7; i++) {
+            w.offer(raw(freeRoam(), i * 16 * MS));
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(3)).insert(any());
+        final var closed = ArgumentCaptor.forClass(Integer.class);
+        verify(sessionRepository, times(3)).close(any(), any(), closed.capture(), anyString());
+        assertThat(closed.getAllValues()).containsExactly(3, 3, 1);
+        assertThat(persistedSamples()).hasSize(7);
+    }
+
+    @Test
+    void run_belowTheLimit_doesNotRotate() {
+        final var w = rotatingWorker(3);
+        for (int i = 0; i < 2; i++) {
+            w.offer(raw(freeRoam(), i * 16 * MS));
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+    }
+
+    @Test
+    void run_midRace_waitsForTheRaceToEndBeforeRotating() {
+        final var w = rotatingWorker(3);
+        for (int i = 0; i < 7; i++) {
+            w.offer(raw(inRace(), i * 16 * MS));      // 7 amostras numa corrida: passa do limite de 3 sem fechar
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        verify(sessionRepository).close(any(), any(), eq(7), anyString());
+    }
+
+    @Test
+    void run_whenTheRaceEnds_theSessionRotatesAtOnce() {
+        final var w = rotatingWorker(3);
+        for (int i = 0; i < 5; i++) {
+            w.offer(raw(inRace(), i * 16 * MS));
+        }
+        for (int i = 5; i < 8; i++) {
+            w.offer(raw(freeRoam(), i * 16 * MS));      // voltou ao mundo aberto (lapNumber 0)
+        }
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(2)).insert(any());
+        final var closed = ArgumentCaptor.forClass(Integer.class);
+        verify(sessionRepository, times(2)).close(any(), any(), closed.capture(), anyString());
+        assertThat(closed.getAllValues()).containsExactly(5, 3);   // a corrida inteira numa sessão; depois o mundo aberto
+    }
+
+    @Test
+    void run_rotationCountsStoredSamples_notRawPackets() {
+        final var w = workerWith(1000, 3, 1, Duration.ofSeconds(30), Duration.ofSeconds(30), 3);
+        for (int i = 0; i < 18; i++) {
+            w.offer(raw(freeRoam(), i * 16 * MS));      // downsample 3: 1 amostra a cada 3 pacotes (o contador reinicia a cada sessão)
+        }
+
+        w.start();
+        w.stop();
+
+        final var closed = ArgumentCaptor.forClass(Integer.class);
+        verify(sessionRepository, times(3)).close(any(), any(), closed.capture(), anyString());
+        assertThat(closed.getAllValues()).containsExactly(3, 3, 2);   // 8 amostras gravadas de 18 pacotes — não 18 amostras
     }
 
     @Test
@@ -471,6 +568,21 @@ class IngestWorkerTest {
         w.start();
 
         verify(sessionRepository, timeout(5000)).close(any(), any(), eq(3), anyString());
+        assertThat(w.isRunning()).isTrue();
+    }
+
+    /** A inatividade conta o tempo real desde o último pacote processado — não o carimbo do pacote (nos testes, virtual). */
+    @Test
+    void run_packetTimestampsFarFromTheRealClock_doNotTriggerTheIdleTimeout() {
+        final var w = defaultWorker();   // inatividade de 30 s
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(racing(), i * 16 * MS));   // carimbos "de 1970": o relógio real está muito à frente
+        }
+
+        w.start();
+
+        verify(sessionRepository, timeout(5000)).insert(any());
+        verify(sessionRepository, after(600).never()).close(any(), any(), anyInt(), anyString());
         assertThat(w.isRunning()).isTrue();
     }
 

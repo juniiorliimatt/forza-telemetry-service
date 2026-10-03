@@ -194,6 +194,10 @@ public class IngestWorker implements SmartLifecycle {
         if (active != null && changesSession(packet)) {
             closeActive("mudança de carro/pista");
         }
+        // Janela cheia: fecha e a próxima abre na sequência — a menos que esteja numa corrida/evento, que espera acabar.
+        if (active != null && active.storedSamples() >= properties.sessionMaxSamples() && !inRace(packet.dash())) {
+            closeActive("limite de amostras");
+        }
         final boolean stopped = packet.dash().speed() < STOPPED_SPEED_MS;
         if (active != null && stoppedTooLong(stopped, raw.receivedNanos())) {
             closeActive("carro parado");
@@ -208,6 +212,7 @@ public class IngestWorker implements SmartLifecycle {
 
         final TelemetryPacket.Dash dash = packet.dash();
         active.lastPacketNanos = raw.receivedNanos();
+        active.lastSeenNanos = System.nanoTime();
         trackLap(dash);
 
         if (active.rawCounter++ % properties.sampleEvery() == 0) {
@@ -216,6 +221,15 @@ public class IngestWorker implements SmartLifecycle {
         if (active.pending.size() >= properties.flushBatchSize()) {
             flush(active, raw.receivedNanos());
         }
+    }
+
+    /**
+     * Corrida/evento: o número da volta é {@code >= 1} (no mundo aberto é 0 — conferido em amostras reais, em que 0
+     * concentra a exploração a ~50 km/h e 1+ as voltas a 130–170 km/h). {@code racePosition} não é usado: não foi
+     * validado no mundo aberto e um falso positivo impediria a rotação.
+     */
+    private static boolean inRace(final TelemetryPacket.Dash dash) {
+        return dash.lapNumber() > 0;
     }
 
     /** Atualiza o início do trecho parado (pelo carimbo do pacote) e diz se ele já passou do limite configurado. */
@@ -291,7 +305,7 @@ public class IngestWorker implements SmartLifecycle {
         if (session == null) {
             return;
         }
-        if (nowNanos - session.lastPacketNanos > properties.sessionIdleTimeout().toNanos()) {
+        if (nowNanos - session.lastSeenNanos > properties.sessionIdleTimeout().toNanos()) {
             closeActive("inatividade");
         } else if (!session.pending.isEmpty() && nowNanos - session.lastFlushNanos >= properties.flushInterval().toNanos()) {
             try {
@@ -372,12 +386,19 @@ public class IngestWorker implements SmartLifecycle {
         private final long startNanos;
         private final List<SampleRow> pending = new ArrayList<>();
         private long lastPacketNanos;
+        /** Relógio real ({@code System.nanoTime()}) do último pacote processado: base da inatividade, independe do carimbo do pacote. */
+        private long lastSeenNanos = System.nanoTime();
         private long lastFlushNanos;
         private int rawCounter;
         private int lastTMs = -1;
         private int lastLapNumber;
         private int persisted;
         private long stoppedSinceNanos = NOT_STOPPED;
+
+        /** Amostras já gravadas mais as que aguardam o próximo lote. */
+        private int storedSamples() {
+            return persisted + pending.size();
+        }
 
         private ActiveSession(final SessionMeta meta, final long startNanos, final int firstLapNumber) {
             this.meta = meta;

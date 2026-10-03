@@ -47,8 +47,8 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 - Escopo: família **Horizon** (FH4/FH5/FH6 usam o mesmo pacote de 324 bytes, então o jogo não é distinguido — o
   card do front diz "FH6"). `TuningService` pega as sessões **encerradas com resumo** de um carro, só as
   iniciadas após o **marco de coleta** (`tuning_checkpoints`, `POST /tuning/cars/{ordinal}/checkpoint`) e só as
-  `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (6000
-  amostras ≈ 5 min a 20 Hz) — contagem de sessões sozinha não basta, uma sessão pode ter segundos.
+  `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (30000
+  amostras = 10 sessões cheias de 3000 ≈ 25 min a 20 Hz) — contagem de sessões sozinha não basta, uma sessão pode ter segundos.
 - `TuningAggregator` combina os resumos ponderando por amostras; `TuningAdvisor` aplica as regras
   sintoma→ajuste da skill `forza-tuning-engineer` (matriz e limiares: bottoming > 3%, pneus 170–210 °F, eixos > 15 °F,
   limitador na última marcha, travamento > 5%, patinagem > 15%, balanço com diferença ≥ 20 pontos e ≥ 150 amostras).
@@ -97,6 +97,14 @@ catálogo de outra família (FM7 e Sled não têm). `carName` (nulo se desconhec
   parado — sem a regra de velocidade a sessão nunca fecharia e o tuning não contaria. Parado não reabre sessão; só ao
   voltar a andar (o contador de parado usa o carimbo dos pacotes, não o relógio). Sessões com < 100 amostras
   (`min-session-samples`) são descartadas (ruído de menu).
+- **Rotação por amostras**: o jogo não avisa que o carro está na garagem, então a sessão **fecha sozinha ao juntar
+  `telemetry.session-max-samples` (3000) amostras gravadas** (já pós-downsample; ~2,5 min a 20 Hz) e a próxima abre no
+  pacote seguinte. **Em corrida/evento espera acabar**: `lapNumber > 0` (no mundo aberto é 0 — conferido em amostras
+  reais: 0 = exploração a ~50 km/h, 1+ = voltas a 130–170 km/h); `racePosition` não é usado (não validado no mundo
+  aberto; falso positivo impediria a rotação). Sprints sem volta (`lapNumber` 0) rotacionam no meio — limitação
+  conhecida. Corrida longa passa de 3000 sem teto. 10 sessões cheias = 30000 amostras = mínimo do tuning.
+- A inatividade (`session-idle-timeout`) conta o **relógio real** do último pacote processado (`lastSeenNanos`), não o
+  carimbo do pacote — os carimbos "virtuais" dos testes fechavam a sessão por engano (testes instáveis).
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s
   (`flush-interval`, `flush-batch-size=200`) com `reWriteBatchedInserts=true` na URL.
 - **JDBC em vez de JPA** de propósito (ingestão em lote de série temporal; arrays `REAL[]`

@@ -82,7 +82,9 @@ mudanças de mola, barra, diferencial, freio, câmbio e pressão).
 - **Sessão** = trecho contínuo com o mesmo carro (e mesma pista, no FM). Abre no primeiro
   pacote com `IsRaceOn=1` e o carro andando; fecha por inatividade (30 s), carro parado por mais de 30 s seguidos
   (a garagem manda `IsRaceOn=1` com o carro parado — `telemetry.session-stationary-timeout`), troca de carro/pista ou
-  shutdown.
+  shutdown. Como o jogo não avisa que o carro está na garagem, a sessão também **fecha sozinha a cada 3000 amostras
+  gravadas** (`telemetry.session-max-samples`, ~2,5 min) e a próxima abre na sequência; numa corrida/evento
+  (`lapNumber > 0`) espera terminar. O tuning exige 10 sessões e 30000 amostras (10 sessões cheias).
   Sessões com menos de 100 amostras (~5 s) são descartadas.
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s.
   Unidades do jogo: velocidade em m/s, temperatura de pneu em °F, rodas na ordem FL, FR, RL, RR.
