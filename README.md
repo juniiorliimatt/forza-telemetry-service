@@ -80,12 +80,14 @@ mudanças de mola, barra, diferencial, freio, câmbio e pressão).
   descarta se encher); o `IngestWorker` decodifica e grava — I/O de banco nunca atrasa o
   `receive()`.
 - **Sessão** = trecho contínuo com o mesmo carro (e mesma pista, no FM). Abre no primeiro
-  pacote com `IsRaceOn=1` e o carro andando; fecha por inatividade (30 s sem pacotes), troca de carro/pista ou
-  shutdown. Como o jogo não avisa que o carro está na garagem (manda `IsRaceOn=1` com o carro parado), **carro parado
-  não gera amostra** e só as amostras limitam a sessão: ela **fecha sozinha a cada 5000 amostras gravadas**
-  (`telemetry.session-max-samples`) e a próxima abre na sequência; numa corrida/evento (`lapNumber > 0`) espera
-  terminar. O tuning exige 10 sessões e 50000 amostras (10 sessões cheias); tempo não entra na regra.
-  Sessões com menos de 100 amostras (~5 s) são descartadas.
+  pacote com `IsRaceOn=1` e o carro andando; fecha só por troca de carro/classe de PI/pista ou pelo limite de amostras
+  — **sem nenhuma regra de tempo**: pausar, ficar na garagem, sair do jogo e voltar só amanhã (ou reiniciar o serviço)
+  continua na mesma sessão. Como o jogo não avisa que o carro está na garagem (manda `IsRaceOn=1` com o carro parado),
+  **carro parado não gera amostra** e só as amostras limitam a sessão: ela **fecha sozinha a cada 5000 amostras
+  gravadas** (`telemetry.session-max-samples`) e a próxima abre na sequência; numa corrida/evento (`lapNumber > 0`) espera
+  terminar. O desligamento do serviço não fecha a sessão: ao voltar, a do mesmo carro e classe é retomada. O tuning exige
+  10 sessões e 50000 amostras (10 sessões cheias); tempo não entra na regra. Sessões com menos de 100 amostras são
+  descartadas ao fechar.
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s.
   Unidades do jogo: velocidade em m/s, temperatura de pneu em °F, rodas na ordem FL, FR, RL, RR.
 - **JDBC em vez de JPA**: caminho quente é ingestão em lote de série temporal; arrays

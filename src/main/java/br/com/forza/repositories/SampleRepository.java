@@ -103,6 +103,12 @@ public class SampleRepository {
                 "SELECT " + COLUMNS + " FROM forza.samples WHERE session_id = ? ORDER BY t_ms", MAPPER, sessionId);
     }
 
+    /** Instante (ms) da última amostra da sessão, ou -1 se não há amostras — a sessão retomada continua a partir dele. */
+    public int maxTMs(final UUID sessionId) {
+        final Integer max = jdbcTemplate.queryForObject("SELECT MAX(t_ms) FROM forza.samples WHERE session_id = ?", Integer.class, sessionId);
+        return max == null ? -1 : max;
+    }
+
     public List<SampleRow> findRange(final UUID sessionId, final int fromMs, final Integer toMs, final int limit) {
         final int upper = toMs == null ? Integer.MAX_VALUE : toMs;
         return jdbcTemplate.query(

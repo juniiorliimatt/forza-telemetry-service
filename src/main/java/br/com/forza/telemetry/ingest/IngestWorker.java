@@ -142,7 +142,7 @@ public class IngestWorker implements SmartLifecycle {
                 rest = queue.poll();
             }
         } finally {
-            closeActive("shutdown");
+            pauseActive();
         }
     }
 
@@ -203,12 +203,11 @@ public class IngestWorker implements SmartLifecycle {
             if (stopped || raw.receivedNanos() < openRetryAfterNanos) {
                 return;
             }
-            active = openSession(packet, raw.receivedNanos());
+            active = resumeOrOpen(packet, raw.receivedNanos());
         }
 
         final TelemetryPacket.Dash dash = packet.dash();
         active.lastPacketNanos = raw.receivedNanos();
-        active.lastSeenNanos = System.nanoTime();
         trackLap(dash);
 
         // Carro parado (garagem, menu, largada) não gera amostra: só as amostras limitam a sessão e contam para o tuning.
@@ -230,16 +229,90 @@ public class IngestWorker implements SmartLifecycle {
     }
 
     private boolean changesSession(final TelemetryPacket packet) {
-        final SessionMeta meta = active.meta;
+        return !sameBuild(packet, active.meta);
+    }
+
+    /**
+     * Mesmo carro, mesma classe de PI (upgrade que muda a classe = outra build, para o tuning não misturar setups) e, no
+     * Forza Motorsport, mesma pista.
+     */
+    private static boolean sameBuild(final TelemetryPacket packet, final SessionMeta meta) {
         if (packet.carOrdinal() != meta.carOrdinal()) {
-            return true;
+            return false;
         }
-        // Upgrade que muda a classe de PI = outra build do carro: sessão nova, para o tuning não misturar setups.
         if (PerformanceClass.of(packet.performanceIndex()) != PerformanceClass.of(meta.performanceIndex())) {
-            return true;
+            return false;
         }
         final Integer track = packet.dash().trackOrdinal();
-        return track != null && meta.trackOrdinal() != null && !track.equals(meta.trackOrdinal());
+        return track == null || meta.trackOrdinal() == null || track.equals(meta.trackOrdinal());
+    }
+
+    /**
+     * Sem sessão ativa: retoma a que ficou aberta no banco (sair do jogo e voltar só amanhã, ou reiniciar o serviço, continua
+     * na MESMA sessão) se for do mesmo carro/classe e ainda couber amostras — ou estiver numa corrida, que espera acabar. As
+     * outras sessões abertas (outro carro/classe, ou já cheias) ficaram órfãs: são fechadas aqui, com resumo.
+     */
+    private ActiveSession resumeOrOpen(final TelemetryPacket packet, final long nowNanos) {
+        final List<SessionMeta> open;
+        try {
+            open = sessionRepository.findActiveMeta(packet.format().label());
+        } catch (RuntimeException e) {
+            openRetryAfterNanos = nowNanos + OPEN_RETRY_BACKOFF_NANOS;
+            throw e;
+        }
+        SessionMeta resumable = null;
+        for (final SessionMeta meta : open) {   // da mais recente para a mais antiga
+            final boolean fits = meta.sampleCount() < properties.sessionMaxSamples() || inRace(packet.dash());
+            if (resumable == null && sameBuild(packet, meta) && fits) {
+                resumable = meta;
+            } else {
+                closeOrphan(meta);
+            }
+        }
+        return resumable == null ? openSession(packet, nowNanos) : resume(resumable, packet, nowNanos);
+    }
+
+    private ActiveSession resume(final SessionMeta meta, final TelemetryPacket packet, final long nowNanos) {
+        final int lastTMs = sampleRepository.maxTMs(meta.id());
+        // As novas amostras continuam logo depois da última já gravada (a pausa não vira tempo de sessão).
+        final long startNanos = nowNanos - TimeUnit.MILLISECONDS.toNanos(lastTMs + 1L);
+        final ActiveSession session = new ActiveSession(meta, startNanos, packet.dash().lapNumber());
+        session.persisted = meta.sampleCount();
+        session.lastTMs = lastTMs;
+        log.info("Sessão {} retomada ({}, carro {}, PI {}): {} amostras já gravadas", meta.id(), meta.gameFormat(), meta.carOrdinal(),
+                meta.performanceIndex(), meta.sampleCount());
+        return session;
+    }
+
+    /** Fecha (com resumo) ou descarta (poucas amostras) uma sessão que ficou aberta no banco e não será retomada. */
+    private void closeOrphan(final SessionMeta meta) {
+        try {
+            final List<SampleRow> rows = sampleRepository.findAll(meta.id());
+            if (rows.size() < properties.minSessionSamples()) {
+                sessionRepository.delete(meta.id());
+                log.info("Sessão {} descartada (órfã): só {} amostras", meta.id(), rows.size());
+                return;
+            }
+            final Instant endedAt = meta.startedAt().plusMillis(rows.get(rows.size() - 1).tMs()).truncatedTo(ChronoUnit.MICROS);
+            sessionRepository.close(meta.id(), endedAt, rows.size(), summarize(meta));
+            log.info("Sessão {} encerrada (órfã, outro carro/classe ou cheia): {} amostras", meta.id(), rows.size());
+        } catch (RuntimeException e) {
+            log.error("Falha ao encerrar a sessão órfã {}", meta.id(), e);
+        }
+    }
+
+    /**
+     * Desligamento do serviço: grava o que falta, mas NÃO fecha a sessão — ela segue aberta no banco e é retomada
+     * quando o jogo voltar a enviar pacotes (ver {@link #resumeOrOpen}).
+     */
+    private void pauseActive() {
+        final ActiveSession pausing = active;
+        if (pausing == null) {
+            return;
+        }
+        active = null;
+        flushForClose(pausing);
+        log.info("Sessão {} mantida aberta no desligamento ({} amostras gravadas)", pausing.meta.id(), pausing.persisted);
     }
 
     private ActiveSession openSession(final TelemetryPacket packet, final long nowNanos) {
@@ -294,9 +367,8 @@ public class IngestWorker implements SmartLifecycle {
         if (session == null) {
             return;
         }
-        if (nowNanos - session.lastSeenNanos > properties.sessionIdleTimeout().toNanos()) {
-            closeActive("inatividade");
-        } else if (!session.pending.isEmpty() && nowNanos - session.lastFlushNanos >= properties.flushInterval().toNanos()) {
+        // Sem regra de tempo para fechar: só amostras, troca de carro/classe/pista ou shutdown encerram a sessão.
+        if (!session.pending.isEmpty() && nowNanos - session.lastFlushNanos >= properties.flushInterval().toNanos()) {
             try {
                 flush(session, nowNanos);
             } catch (RuntimeException e) {
@@ -375,8 +447,6 @@ public class IngestWorker implements SmartLifecycle {
         private final long startNanos;
         private final List<SampleRow> pending = new ArrayList<>();
         private long lastPacketNanos;
-        /** Relógio real ({@code System.nanoTime()}) do último pacote processado: base da inatividade, independe do carimbo do pacote. */
-        private long lastSeenNanos = System.nanoTime();
         private long lastFlushNanos;
         private int rawCounter;
         private int lastTMs = -1;

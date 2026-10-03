@@ -13,6 +13,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import br.com.forza.config.TelemetryProperties;
 import br.com.forza.models.entities.SampleRow;
@@ -25,6 +26,7 @@ import br.com.forza.telemetry.packet.PacketFormat;
 import br.com.forza.telemetry.summary.SummaryCalculator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -57,23 +59,21 @@ class IngestWorkerTest {
         }
     }
 
-    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
-                                    final Duration idleTimeout) {
-        return workerWith(queueCapacity, sampleEvery, minSamples, idleTimeout, 5000);
+    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples) {
+        return workerWith(queueCapacity, sampleEvery, minSamples, 5000);
     }
 
-    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples,
-                                    final Duration idleTimeout, final int maxSamples) {
+    private IngestWorker workerWith(final int queueCapacity, final int sampleEvery, final int minSamples, final int maxSamples) {
         final var properties = new TelemetryProperties(
                 new TelemetryProperties.Udp(true, 5310, queueCapacity, 65_536),
-                sampleEvery, idleTimeout, maxSamples, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
+                sampleEvery, maxSamples, Duration.ofMillis(50), 200, minSamples, Duration.ofSeconds(5));
         worker = new IngestWorker(properties, liveSnapshot, sessionRepository, lapRepository, sampleRepository,
                 new SummaryCalculator(), new ObjectMapper());
         return worker;
     }
 
     private IngestWorker defaultWorker() {
-        return workerWith(1000, 1, 1, Duration.ofSeconds(30));
+        return workerWith(1000, 1, 1);
     }
 
     private static RawPacket raw(final byte[] data, final long nanos) {
@@ -101,8 +101,14 @@ class IngestWorkerTest {
         return persisted;
     }
 
+    private void verifyNeverClosed() {
+        verify(sessionRepository, never()).close(any(), any(), anyInt(), anyString());
+        verify(sessionRepository, never()).delete(any());
+    }
+
+    /** O desligamento do serviço grava o que falta, mas NÃO fecha a sessão: ela é retomada na próxima partida (ver os testes de retomada). */
     @Test
-    void run_racingPackets_openPersistAndCloseSessionWithSummary() {
+    void run_racingPackets_openAndPersistTheSession_leavingItOpenAtShutdown() {
         final var w = defaultWorker();
         for (int i = 0; i < 5; i++) {
             w.offer(raw(racing(), i * 16 * MS));
@@ -117,10 +123,7 @@ class IngestWorkerTest {
         assertThat(meta.getValue().carOrdinal()).isEqualTo(1234);
         assertThat(meta.getValue().engineMaxRpm()).isEqualTo(8000f);
         assertThat(persistedSamples()).hasSize(5);
-        final var summary = ArgumentCaptor.forClass(String.class);
-        verify(sessionRepository).close(eq(meta.getValue().id()), any(), eq(5), summary.capture());
-        assertThat(summary.getValue()).contains("\"samples\"");
-        verify(sessionRepository, never()).delete(any());
+        verifyNeverClosed();
     }
 
     private static byte[] parked() {
@@ -170,7 +173,8 @@ class IngestWorkerTest {
         w.stop();
 
         verify(sessionRepository, times(1)).insert(any());
-        verify(sessionRepository).close(any(), any(), eq(3), anyString());
+        assertThat(persistedSamples()).hasSize(3);   // 2 + 1 andando; os 50 parados não enchem a janela de 3 → sem rotação
+        verifyNeverClosed();
     }
 
     @Test
@@ -187,11 +191,12 @@ class IngestWorkerTest {
         w.stop();
 
         verify(sessionRepository, times(1)).insert(any());
-        verify(sessionRepository).close(any(), any(), eq(3), anyString());
+        assertThat(persistedSamples()).hasSize(3);
+        verifyNeverClosed();
     }
 
     private IngestWorker rotatingWorker(final int maxSamples) {
-        return workerWith(1000, 1, 1, Duration.ofSeconds(30), maxSamples);
+        return workerWith(1000, 1, 1, maxSamples);
     }
 
     private static byte[] freeRoam() {
@@ -215,8 +220,8 @@ class IngestWorkerTest {
 
         verify(sessionRepository, times(3)).insert(any());
         final var closed = ArgumentCaptor.forClass(Integer.class);
-        verify(sessionRepository, times(3)).close(any(), any(), closed.capture(), anyString());
-        assertThat(closed.getAllValues()).containsExactly(3, 3, 1);
+        verify(sessionRepository, times(2)).close(any(), any(), closed.capture(), anyString());
+        assertThat(closed.getAllValues()).containsExactly(3, 3);   // a terceira (1 amostra) segue aberta: o desligamento não fecha
         assertThat(persistedSamples()).hasSize(7);
     }
 
@@ -244,7 +249,8 @@ class IngestWorkerTest {
         w.stop();
 
         verify(sessionRepository, times(1)).insert(any());
-        verify(sessionRepository).close(any(), any(), eq(7), anyString());
+        assertThat(persistedSamples()).hasSize(7);
+        verifyNeverClosed();
     }
 
     @Test
@@ -262,13 +268,13 @@ class IngestWorkerTest {
 
         verify(sessionRepository, times(2)).insert(any());
         final var closed = ArgumentCaptor.forClass(Integer.class);
-        verify(sessionRepository, times(2)).close(any(), any(), closed.capture(), anyString());
-        assertThat(closed.getAllValues()).containsExactly(5, 3);   // a corrida inteira numa sessão; depois o mundo aberto
+        verify(sessionRepository, times(1)).close(any(), any(), closed.capture(), anyString());
+        assertThat(closed.getAllValues()).containsExactly(5);   // a corrida inteira numa sessão; o mundo aberto que vem depois segue aberto
     }
 
     @Test
     void run_rotationCountsStoredSamples_notRawPackets() {
-        final var w = workerWith(1000, 3, 1, Duration.ofSeconds(30), 3);
+        final var w = workerWith(1000, 3, 1, 3);
         for (int i = 0; i < 18; i++) {
             w.offer(raw(freeRoam(), i * 16 * MS));      // downsample 3: 1 amostra a cada 3 pacotes (o contador reinicia a cada sessão)
         }
@@ -277,8 +283,9 @@ class IngestWorkerTest {
         w.stop();
 
         final var closed = ArgumentCaptor.forClass(Integer.class);
-        verify(sessionRepository, times(3)).close(any(), any(), closed.capture(), anyString());
-        assertThat(closed.getAllValues()).containsExactly(3, 3, 2);   // 8 amostras gravadas de 18 pacotes — não 18 amostras
+        verify(sessionRepository, times(2)).close(any(), any(), closed.capture(), anyString());
+        assertThat(closed.getAllValues()).containsExactly(3, 3);   // 8 amostras gravadas de 18 pacotes (3+3+2) — não 18 amostras
+        verify(sessionRepository, times(3)).insert(any());
     }
 
     private static byte[] drivingWithPi(final int pi) {
@@ -302,7 +309,7 @@ class IngestWorkerTest {
         final var metas = ArgumentCaptor.forClass(SessionMeta.class);
         verify(sessionRepository, times(2)).insert(metas.capture());
         assertThat(metas.getAllValues()).extracting(SessionMeta::performanceIndex).containsExactly(700, 701);
-        verify(sessionRepository, times(2)).close(any(), any(), eq(3), anyString());
+        verify(sessionRepository, times(1)).close(any(), any(), eq(3), anyString());   // só a da classe antiga; a nova segue aberta
     }
 
     @Test
@@ -332,24 +339,27 @@ class IngestWorkerTest {
     }
 
     @Test
-    void run_sessionBelowMinimumSamples_isDiscarded() {
-        final var w = workerWith(1000, 1, 10, Duration.ofSeconds(30));
+    void run_sessionBelowMinimumSamples_isDiscardedWhenItCloses() {
+        final var w = workerWith(1000, 1, 10);
         for (int i = 0; i < 5; i++) {
-            w.offer(raw(racing(), i * 16 * MS));
+            w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).car(1, 5, 800, 1, 8).build(), i * 16 * MS));
+        }
+        for (int i = 5; i < 8; i++) {
+            w.offer(raw(PacketBuilder.racing(PacketFormat.HORIZON).speed(20f).car(2, 5, 800, 1, 8).build(), i * 16 * MS));   // troca de carro fecha a 1ª
         }
 
         w.start();
         w.stop();
 
-        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
-        verify(sessionRepository).insert(meta.capture());
-        verify(sessionRepository).delete(meta.getValue().id());
+        final var metas = ArgumentCaptor.forClass(SessionMeta.class);
+        verify(sessionRepository, times(2)).insert(metas.capture());
+        verify(sessionRepository).delete(metas.getAllValues().get(0).id());   // 5 amostras < mínimo de 10
         verify(sessionRepository, never()).close(any(), any(), anyInt(), anyString());
     }
 
     @Test
     void run_downsample_keepsOneEveryNPackets() {
-        final var w = workerWith(1000, 3, 1, Duration.ofSeconds(30));
+        final var w = workerWith(1000, 3, 1);
         for (int i = 0; i < 9; i++) {
             w.offer(raw(racing(), i * 16 * MS));
         }
@@ -427,7 +437,9 @@ class IngestWorkerTest {
         final var metas = ArgumentCaptor.forClass(SessionMeta.class);
         verify(sessionRepository, times(2)).insert(metas.capture());
         assertThat(metas.getAllValues()).extracting(SessionMeta::carOrdinal).containsExactly(1, 2);
-        verify(sessionRepository, times(2)).close(any(), any(), eq(3), anyString());
+        final var summary = ArgumentCaptor.forClass(String.class);
+        verify(sessionRepository, times(1)).close(eq(metas.getAllValues().get(0).id()), any(), eq(3), summary.capture());   // a do carro 2 segue aberta
+        assertThat(summary.getValue()).contains("\"samples\"");
     }
 
     @Test
@@ -473,7 +485,7 @@ class IngestWorkerTest {
 
     @Test
     void offer_fullQueue_dropsExtraPacketsWithoutBlockingOrThrowing() {
-        final var w = workerWith(2, 1, 1, Duration.ofSeconds(30));
+        final var w = workerWith(2, 1, 1);
         for (int i = 0; i < 5; i++) {
             w.offer(raw(racing(), i * 16 * MS));
         }
@@ -516,7 +528,7 @@ class IngestWorkerTest {
     }
 
     @Test
-    void run_finalFlushFailsOnce_isRetriedAndSessionClosesWithAllSamples() {
+    void run_finalFlushFailsOnce_isRetriedAndAllSamplesAreSaved_theSessionStaysOpen() {
         doThrow(new IllegalStateException("falha transitória")).doAnswer(copyBatch).when(sampleRepository).batchInsert(any(), any());
         final var w = defaultWorker();
         for (int i = 0; i < 3; i++) {
@@ -526,14 +538,13 @@ class IngestWorkerTest {
         w.start();
         w.stop();
 
-        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
-        verify(sessionRepository).insert(meta.capture());
+        verify(sessionRepository).insert(any());
         assertThat(persistedSamples()).hasSize(3);
-        verify(sessionRepository).close(eq(meta.getValue().id()), any(), eq(3), anyString());
+        verifyNeverClosed();
     }
 
     @Test
-    void run_finalFlushKeepsFailingAndNothingWasPersisted_sessionIsDeletedNotLeftOpen() {
+    void run_finalFlushKeepsFailing_theLossIsLoggedButTheSessionIsNeitherClosedNorDeleted() {
         doThrow(new IllegalStateException("banco fora do ar")).when(sampleRepository).batchInsert(any(), any());
         final var w = defaultWorker();
         w.offer(raw(racing(), 0));
@@ -541,17 +552,15 @@ class IngestWorkerTest {
         w.start();
         w.stop();
 
-        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
-        verify(sessionRepository).insert(meta.capture());
-        verify(sessionRepository).delete(meta.getValue().id());
-        verify(sessionRepository, never()).close(any(), any(), anyInt(), any());
+        verify(sessionRepository).insert(any());
+        verifyNeverClosed();   // a sessão fica aberta no banco e é retomada na próxima partida
         assertThat(w.isRunning()).isFalse();
     }
 
     @Test
-    void run_finalFlushKeepsFailingButEarlierSamplesWerePersisted_sessionStillClosesWithPersistedCount() {
+    void run_finalFlushKeepsFailingButEarlierSamplesWerePersisted_theyStayAndTheSessionStaysOpen() {
         doAnswer(copyBatch).doThrow(new IllegalStateException("banco fora do ar")).when(sampleRepository).batchInsert(any(), any());
-        final var w = workerWith(1000, 1, 3, Duration.ofSeconds(30));
+        final var w = workerWith(1000, 1, 3);
         final var now = System.nanoTime();
         for (int i = 0; i < 3; i++) {
             w.offer(raw(racing(), now + i * MS));
@@ -563,40 +572,216 @@ class IngestWorkerTest {
 
         w.stop();
 
-        final var meta = ArgumentCaptor.forClass(SessionMeta.class);
-        verify(sessionRepository).insert(meta.capture());
-        final var summary = ArgumentCaptor.forClass(String.class);
-        verify(sessionRepository).close(eq(meta.getValue().id()), any(), eq(3), summary.capture());
-        verify(sessionRepository, never()).delete(any());
+        verify(sessionRepository).insert(any());
+        assertThat(persistedSamples()).hasSize(3);   // o lote anterior ficou gravado; o último foi perdido (logado)
+        verifyNeverClosed();
     }
 
+    /**
+     * Só as amostras (e a troca de carro/classe) encerram a sessão — nenhuma regra de tempo. Pausar o jogo, ficar na garagem,
+     * sair do jogo e voltar só amanhã ou até reiniciar o serviço não fecha nada: a sessão continua (ver os testes de retomada).
+     */
     @Test
-    void run_inactivity_closesSessionWithoutStopping() {
-        final var w = workerWith(1000, 1, 1, Duration.ofMillis(200));
-        final var now = System.nanoTime();
-        for (int i = 0; i < 3; i++) {
-            w.offer(raw(racing(), now + i * 16 * MS));
-        }
+    void run_aLongGapBetweenPackets_keepsTheSameSession() {
+        final var w = defaultWorker();
+        w.offer(raw(racing(), 0));
+        w.offer(raw(racing(), 16 * MS));
+        w.offer(raw(racing(), seconds(3 * 3600)));        // 3 h depois (jogo pausado, PC suspenso…)
+        w.offer(raw(racing(), seconds(3 * 3600) + 16 * MS));
 
         w.start();
+        w.stop();
 
-        verify(sessionRepository, timeout(5000)).close(any(), any(), eq(3), anyString());
-        assertThat(w.isRunning()).isTrue();
+        verify(sessionRepository, times(1)).insert(any());
+        assertThat(persistedSamples()).hasSize(4);
+        verifyNeverClosed();
     }
 
-    /** A inatividade conta o tempo real desde o último pacote processado — não o carimbo do pacote (nos testes, virtual). */
     @Test
-    void run_packetTimestampsFarFromTheRealClock_doNotTriggerTheIdleTimeout() {
-        final var w = defaultWorker();   // inatividade de 30 s
+    void run_noPacketsForAWhile_doesNotCloseTheSession_noteventAtShutdown() {
+        final var w = defaultWorker();
         for (int i = 0; i < 3; i++) {
-            w.offer(raw(racing(), i * 16 * MS));   // carimbos "de 1970": o relógio real está muito à frente
+            w.offer(raw(racing(), i * 16 * MS));
         }
 
         w.start();
 
         verify(sessionRepository, timeout(5000)).insert(any());
-        verify(sessionRepository, after(600).never()).close(any(), any(), anyInt(), anyString());
+        verify(sessionRepository, after(800).never()).close(any(), any(), anyInt(), anyString());
         assertThat(w.isRunning()).isTrue();
+        w.stop();
+        verifyNeverClosed();
+    }
+
+    @Test
+    void run_pausedGame_racePacketsOffThenResumed_continuesInTheSameSession() {
+        final var w = defaultWorker();
+        w.offer(raw(racing(), 0));
+        w.offer(raw(PacketBuilder.of(PacketFormat.HORIZON).raceOn(false).build(), seconds(60)));   // pausado
+        w.offer(raw(PacketBuilder.of(PacketFormat.HORIZON).raceOn(false).build(), seconds(600)));  // ainda pausado
+        w.offer(raw(racing(), seconds(900)));                                                       // voltou
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        assertThat(persistedSamples()).hasSize(2);
+        verifyNeverClosed();
+    }
+
+    // ---- Retomada: sair do jogo hoje e voltar só amanhã (ou reiniciar o serviço) continua na MESMA sessão ----
+
+    private static SampleRow sample(final int tMs) {
+        return br.com.forza.support.Fixtures.sample().tMs(tMs).build();
+    }
+
+    private static SessionMeta openSession(final int car, final int pi, final int storedSamples) {
+        return new SessionMeta(UUID.randomUUID(), "FH4/FH5/FH6", car, 5, pi, 1, 8, 8000f, 1000f, null,
+                Instant.parse("2026-10-03T12:00:00Z"), null, storedSamples, null);
+    }
+
+    @Test
+    void run_anOpenSessionOfTheSameCarAndClass_isResumedInsteadOfOpeningANewOne() {
+        final var open = openSession(1234, 800, 1200);
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(open));
+        when(sampleRepository.maxTMs(open.id())).thenReturn(60_000);
+        final var w = defaultWorker();
+        w.offer(raw(racing(), 0));
+        w.offer(raw(racing(), 16 * MS));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, never()).insert(any());
+        assertThat(persistedSamples()).hasSize(2);
+        assertThat(persistedSamples()).extracting(SampleRow::tMs).allSatisfy(t -> assertThat(t).isGreaterThan(60_000));   // continua depois do último
+        assertThat(persistedSamples().get(1).tMs()).isGreaterThan(persistedSamples().get(0).tMs());
+        verifyNeverClosed();
+    }
+
+    @Test
+    void run_aResumedSession_countsItsEarlierSamplesTowardTheRotationLimit() {
+        final var open = openSession(1234, 800, 2);
+        // 1ª consulta: a sessão aberta; depois de fechada pela rotação, o banco não a devolve mais
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(open)).thenReturn(List.of());
+        when(sampleRepository.maxTMs(open.id())).thenReturn(5_000);
+        final var w = rotatingWorker(3);
+        for (int i = 0; i < 3; i++) {
+            w.offer(raw(freeRoam(), i * 16 * MS));
+        }
+
+        w.start();
+        w.stop();
+
+        // 2 já gravadas + 1 nova = 3 → fecha ao próximo pacote; os outros 2 abrem uma sessão nova
+        final var closed = ArgumentCaptor.forClass(Integer.class);
+        verify(sessionRepository, times(1)).close(eq(open.id()), any(), closed.capture(), anyString());
+        assertThat(closed.getValue()).isEqualTo(3);
+        verify(sessionRepository, times(1)).insert(any());
+    }
+
+    @Test
+    void run_anOpenSessionOfAnotherCar_isClosedAndANewOneOpens() {
+        final var stale = openSession(999, 800, 400);
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(stale));
+        when(sampleRepository.findAll(stale.id())).thenReturn(List.of(sample(1000), sample(2000)));
+        final var w = defaultWorker();
+        w.offer(raw(racing(), 0));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository).close(eq(stale.id()), any(), eq(2), anyString());
+        verify(sessionRepository, times(1)).insert(any());
+    }
+
+    @Test
+    void run_anOpenSessionOfTheSameCarInAnotherPerformanceClass_isClosedNotResumed() {
+        final var stale = openSession(1234, 650, 400);   // A; o pacote é PI 800 (S1)
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(stale));
+        when(sampleRepository.findAll(stale.id())).thenReturn(List.of(sample(1000), sample(2000)));
+        final var w = defaultWorker();
+        w.offer(raw(racing(), 0));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository).close(eq(stale.id()), any(), eq(2), anyString());
+        verify(sessionRepository, times(1)).insert(any());
+    }
+
+    @Test
+    void run_aStaleSessionWithTooFewSamples_isDeletedWhenItIsClosed() {
+        final var stale = openSession(999, 800, 3);
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(stale));
+        when(sampleRepository.findAll(stale.id())).thenReturn(List.of(sample(10)));
+        final var w = workerWith(1000, 1, 10);
+        w.offer(raw(racing(), 0));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository).delete(stale.id());
+        verify(sessionRepository, never()).close(eq(stale.id()), any(), anyInt(), anyString());
+    }
+
+    @Test
+    void run_anOpenSessionAlreadyFull_isClosedAndANewOneOpens() {
+        final var full = openSession(1234, 800, 3);
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(full));
+        when(sampleRepository.findAll(full.id())).thenReturn(List.of(sample(1000), sample(2000), sample(3000)));
+        final var w = rotatingWorker(3);
+        w.offer(raw(freeRoam(), 0));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository).close(eq(full.id()), any(), eq(3), anyString());
+        verify(sessionRepository, times(1)).insert(any());
+    }
+
+    @Test
+    void run_anOpenSessionAlreadyFull_butInARace_isResumedUntilTheRaceEnds() {
+        final var full = openSession(1234, 800, 3);
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(full));
+        when(sampleRepository.maxTMs(full.id())).thenReturn(3_000);
+        final var w = rotatingWorker(3);
+        w.offer(raw(inRace(), 0));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, never()).insert(any());
+        verifyNeverClosed();
+    }
+
+    @Test
+    void run_stationaryPacketsDoNotResumeAnything() {
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenReturn(List.of(openSession(1234, 800, 100)));
+        final var w = defaultWorker();
+        w.offer(raw(parked(), 0));
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, never()).insert(any());
+        assertThat(persistedSamples()).isEmpty();
+        verifyNeverClosed();
+    }
+
+    @Test
+    void run_ifLookingForOpenSessionsFails_itBacksOffLikeAFailedOpen_andRetriesLater() {
+        when(sessionRepository.findActiveMeta("FH4/FH5/FH6")).thenThrow(new IllegalStateException("banco fora do ar")).thenReturn(List.of());
+        final var w = defaultWorker();
+        w.offer(raw(racing(), 0));
+        w.offer(raw(racing(), 1_000 * MS));                      // dentro do recuo de 5 s: ignorado
+        w.offer(raw(racing(), TimeUnit.SECONDS.toNanos(10)));    // depois do recuo: abre
+
+        w.start();
+        w.stop();
+
+        verify(sessionRepository, times(1)).insert(any());
+        assertThat(persistedSamples()).hasSize(1);
     }
 
     @Test

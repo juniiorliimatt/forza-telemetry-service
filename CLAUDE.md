@@ -108,20 +108,24 @@ catálogo de outra família (FM7 e Sled não têm). `carName` (nulo se desconhec
   traz inputs/pneus/posição e **não é gravado**. Formato novo = entrada nova em
   `PacketFormat` + teste com pacote sintético.
 - **Sessão** = trecho contínuo com o mesmo carro (e mesma pista, no FM). Abre no primeiro
-  pacote com `IsRaceOn=1` **e o carro andando** (velocidade ≥ 0,5 m/s); fecha por inatividade
-  (`telemetry.session-idle-timeout=30s`, sem pacotes), troca de carro/pista, **limite de amostras** (abaixo) ou
-  shutdown. **Não há regra de tempo parado**: a garagem (e menus de foto/loja) segue mandando `IsRaceOn=1` com o carro
-  parado, então **carro parado (< 0,5 m/s) não gera amostra nem abre sessão** — só as amostras limitam a sessão e contam
-  para o tuning. Sessões com < 100 amostras (`min-session-samples`) são descartadas (ruído de menu).
+  pacote com `IsRaceOn=1` **e o carro andando** (velocidade ≥ 0,5 m/s); fecha só por troca de carro/classe de PI/pista
+  ou pelo **limite de amostras** (abaixo). **Não há NENHUMA regra de tempo** (decisão do desenvolvedor): pausar, ficar na
+  garagem, sair do jogo e voltar só amanhã continuam na **mesma sessão**. A garagem (e menus de foto/loja) segue mandando
+  `IsRaceOn=1` com o carro parado, então **carro parado (< 0,5 m/s) não gera amostra nem abre sessão** — só as amostras
+  limitam a sessão e contam para o tuning. Sessões com < 100 amostras (`min-session-samples`) são descartadas ao fechar.
+- **Retomada**: o desligamento do serviço grava o que falta mas **não fecha** a sessão (`pauseActive`); ao receber o primeiro
+  pacote com o carro andando, `resumeOrOpen` consulta as sessões abertas no banco (`findActiveMeta`): a do mesmo carro e
+  classe (e que ainda caiba amostras, ou esteja numa corrida) é **retomada** — o tempo (`t_ms`) continua logo após a última
+  amostra e as amostras já gravadas contam para o limite; as outras abertas (outro carro/classe, ou cheias) são órfãs e
+  fechadas ali, com resumo (ou descartadas se < 100 amostras). Efeito: uma sessão fica "Ativa" enquanto o jogo estiver
+  fechado, e só passa a contar no tuning ao fechar (limite de amostras ou troca de carro/classe).
 - **Rotação por amostras**: a sessão **fecha sozinha ao juntar `telemetry.session-max-samples` (5000) amostras
   gravadas** (já pós-downsample) e a próxima abre no pacote seguinte. **Em corrida/evento espera acabar**:
   `lapNumber > 0` (no mundo aberto é 0 — conferido em amostras reais: 0 = exploração a ~50 km/h, 1+ = voltas a
   130–170 km/h); `racePosition` não é usado (não validado no mundo aberto; falso positivo impediria a rotação).
   Sprints sem volta (`lapNumber` 0) rotacionam no meio — limitação conhecida. Corrida longa passa de 5000 sem teto.
-  Uma sessão parada na garagem fica "Ativa" sem amostras até voltar a andar, trocar de carro ou o jogo parar de
-  enviar pacotes. 10 sessões cheias = 50000 amostras = mínimo do tuning (tempo não entra na regra).
-- A inatividade (`session-idle-timeout`) conta o **relógio real** do último pacote processado (`lastSeenNanos`), não o
-  carimbo do pacote — os carimbos "virtuais" dos testes fechavam a sessão por engano (testes instáveis).
+  Uma sessão parada na garagem fica "Ativa" sem amostras até voltar a andar ou trocar de carro. 10 sessões cheias = 50000
+  amostras = mínimo do tuning (tempo não entra na regra).
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s
   (`flush-interval`, `flush-batch-size=200`) com `reWriteBatchedInserts=true` na URL.
 - **JDBC em vez de JPA** de propósito (ingestão em lote de série temporal; arrays `REAL[]`

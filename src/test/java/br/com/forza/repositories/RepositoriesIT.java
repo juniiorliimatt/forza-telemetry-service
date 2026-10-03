@@ -275,6 +275,19 @@ class RepositoriesIT {
     }
 
     @Test
+    void samples_maxTMs_returnsTheLastSampleTime_orMinusOneForAnEmptySession() {
+        final var meta = newSession(Instant.parse("2026-11-07T10:00:00Z"));
+        sessions.insert(meta);
+
+        assertThat(samples.maxTMs(meta.id())).isEqualTo(-1);
+
+        samples.batchInsert(meta.id(), List.of(sample().tMs(0).build(), sample().tMs(50).build(), sample().tMs(40_000).build()));
+
+        assertThat(samples.maxTMs(meta.id())).isEqualTo(40_000);
+        assertThat(samples.maxTMs(UUID.randomUUID())).isEqualTo(-1);
+    }
+
+    @Test
     void tuning_findActiveMeta_returnsOnlyOpenSessionsOfTheFormat_withTheLiveSampleCount() {
         jdbc.update("DELETE FROM forza.sessions");
         final var base = Instant.parse("2026-11-06T10:00:00Z");
