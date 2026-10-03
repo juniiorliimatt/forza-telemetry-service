@@ -4,6 +4,10 @@ import br.com.forza.models.dto.LapDTO;
 import br.com.forza.models.dto.SampleDTO;
 import br.com.forza.models.dto.SessionDTO;
 import br.com.forza.models.dto.SessionPageDTO;
+import br.com.forza.models.dto.TuningSummaryDTO;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import br.com.forza.services.SessionQueryService;
 import java.util.List;
 import java.util.Map;
@@ -31,12 +35,14 @@ public class SessionController {
 
     /** Mais recentes primeiro, paginação por cursor opaco ({@code nextCursor} da página anterior). */
     @GetMapping
+    @ApiResponse(responseCode = "400", description = "Cursor inválido", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<SessionPageDTO> list(@RequestParam(required = false) final String cursor,
                                                @RequestParam(defaultValue = "20") final int size) {
         return ResponseEntity.ok(sessionQueryService.list(cursor, size));
     }
 
     @GetMapping("/{id}")
+    @ApiResponse(responseCode = "404", description = "Sessão não encontrada", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<SessionDTO> findById(@PathVariable final UUID id) {
         return ResponseEntity.ok(sessionQueryService.get(id));
     }
@@ -48,6 +54,9 @@ public class SessionController {
 
     /** Métricas agregadas de tuning (suspensão, balanço em curva, frenagem, tração, câmbio, pneus). */
     @GetMapping("/{id}/summary")
+    @ApiResponse(responseCode = "200", description = "Resumo de tuning",
+            content = @Content(schema = @Schema(implementation = TuningSummaryDTO.class)))
+    @ApiResponse(responseCode = "404", description = "Sessão não encontrada", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<Map<String, Object>> summary(@PathVariable final UUID id) {
         return ResponseEntity.ok(sessionQueryService.summary(id));
     }

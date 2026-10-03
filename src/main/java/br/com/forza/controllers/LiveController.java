@@ -4,6 +4,8 @@ import br.com.forza.config.TelemetryProperties;
 import br.com.forza.exceptions.ResourceNotFoundException;
 import br.com.forza.models.dto.LiveSnapshotDTO;
 import br.com.forza.telemetry.ingest.LiveSnapshot;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +25,7 @@ public class LiveController {
 
     /** Último pacote recebido; 404 se nada chegou nos últimos {@code telemetry.live-stale-after}. */
     @GetMapping("/snapshot")
+    @ApiResponse(responseCode = "404", description = "Nenhum pacote recente", content = @Content(mediaType = "application/problem+json"))
     public ResponseEntity<LiveSnapshotDTO> snapshot() {
         final LiveSnapshot.Reading reading = liveSnapshot.current(properties.liveStaleAfter())
                 .orElseThrow(() -> new ResourceNotFoundException("Nenhum pacote de telemetria recebido recentemente"));
