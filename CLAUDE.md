@@ -77,8 +77,8 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   — ver a memória `forza-tuning-pending-calibration`.
 - **Quantidade do ajuste** (`StepCatalog`): o Data Out não traz o setup atual nem o curso dos sliders (e o forzahorizonhub
   confirma que não lista valores stock por carro), então cada sugestão traz `amount`/`unit`/`magnitude` = **tamanho do passo
-  deste ciclo**, não o valor final: pneus 0,1 bar · cambagem 0,2° · convergência 0,1° · barras 2 pontos · molas 5% do curso do
-  slider (varia por carro) · altura 0,5 cm · amortecimento 1 ponto · freio (pressão 5 / equilíbrio 1) e diferencial 5 pontos
+  deste ciclo**, não o valor final: pneus 0,1 bar · cambagem 0,2° · convergência 0,1° · barras 2 pontos · molas 5 pontos percentuais do
+  curso do slider (curso = máx − mín do slider, varia por carro; o front mostra a conta com exemplo) · altura 0,5 cm · amortecimento 1 ponto · freio (pressão 5 / equilíbrio 1) e diferencial 5 pontos
   percentuais · relações 0,1. Cresce com a severidade (SMALL ×1 < 1,5 ≤ MEDIUM ×2 < 2,5 ≤ LARGE ×3). Parâmetro desconhecido
   → sem número (nunca inventado). Valores absolutos exigiriam peso/distribuição informados (modelo de frequência natural).
 - **Marchas**: o jogo reporta ré como `0` e neutro/troca como `11` (comprovado em dados reais: 11 aparece em movimento

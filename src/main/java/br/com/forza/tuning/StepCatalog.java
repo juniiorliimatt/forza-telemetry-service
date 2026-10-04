@@ -8,8 +8,8 @@ import java.util.Optional;
  * Tamanho do passo de cada ajuste do tuning. O Data Out não traz o valor atual do setup nem o curso dos sliders (e o
  * forzahorizonhub confirma que não há valores stock por carro), então o app não diz o valor final: diz <b>quanto mexer
  * neste ciclo</b>, na unidade que o jogo mostra. O passo cresce com a severidade do sintoma (pequeno ×1, médio ×2,
- * grande ×3) e é pensado para um ciclo de teste de 2–3 voltas; valores que dependem do carro (molas) vão em % do curso do
- * slider. Escalas de referência (skill {@code forza-tuning-engineer}): barras 1–65, amortecimento ~1–20, pressão em bar.
+ * grande ×3) e é pensado para um ciclo de teste de 2–3 voltas; valores que dependem do carro (molas) vão em pontos percentuais do
+ * curso do slider (máximo − mínimo mostrado no jogo). Escalas de referência (skill {@code forza-tuning-engineer}): barras 1–65, amortecimento ~1–20, pressão em bar.
  */
 final class StepCatalog {
 
@@ -28,7 +28,8 @@ final class StepCatalog {
             new Base("cambagem", 0.2, "°"),
             new Base("convergência", 0.1, "°"),
             new Base("barra", 2.0, "pontos"),
-            new Base("mola", 5.0, "% do curso do slider"),
+            // Pontos percentuais do curso (máx − mín do slider), como o resto: "15% da mola" soaria como 15% do valor atual.
+            new Base("mola", 5.0, "pontos percentuais do curso do slider"),
             new Base("altura do solo", 0.5, "cm"),
             new Base("rigidez de", 1.0, "pontos"),
             new Base("diferencial", 5.0, "pontos percentuais"),
