@@ -38,6 +38,16 @@ class SessionDTOTest {
     }
 
     @Test
+    void from_sessionWithSamplesPurged_flagsIt() {
+        final var base = Fixtures.session(UUID.randomUUID(), 0, null);
+        final var purged = new SessionMeta(base.id(), base.gameFormat(), 1, 1, 1, 0, 4, 1f, 1f, 7,
+                base.startedAt(), Instant.parse("2026-10-03T12:05:00Z"), 100, null, Instant.parse("2026-10-10T12:00:00Z"));
+
+        assertThat(SessionDTO.from(purged).samplesPurged()).isTrue();
+        assertThat(SessionDTO.from(base).samplesPurged()).isFalse();
+    }
+
+    @Test
     void from_withoutCatalogName_hasNullCarName() {
         assertThat(SessionDTO.from(Fixtures.session(0)).carName()).isNull();
     }

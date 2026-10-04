@@ -93,6 +93,12 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   **antes** de mover o marco, na mesma transação (falha ao salvar = marco não se move). Sem dados suficientes nada é
   salvo. A foto independe das sessões (que podem ser apagadas) e das regras futuras do advisor: reflete o que foi
   recomendado na época. Só nasce de um reinício — não há botão "salvar" avulso.
+- **Limpeza de amostras** (`SamplePurger`): `forza.samples` é a tabela que cresce (~5000 linhas/sessão). No mesmo
+  `resetCollection`, **depois** de mover o marco, apaga fisicamente as amostras das sessões **fechadas** daquele
+  (carro, classe de PI), **menos as `tuning.keep-sample-sessions` (2) mais recentes** — sempre sobra telemetria de amostra;
+  essas saem no próximo reinício. Marca `sessions.samples_purged_at` (`SessionDTO.samplesPurged`); `summary`, voltas e
+  `sample_count` ficam (o tuning e o histórico não dependem das amostras). **Sem retenção por tempo** (decisão do
+  desenvolvedor): as amostras ficam até a coleta ser reiniciada. Nunca toca sessão aberta nem outro carro/classe.
 - Regra nova = teste em `TuningAdvisorTest` primeiro (cada limiar tem mutação coberta).
 
 ## Nome do carro

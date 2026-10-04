@@ -6,7 +6,8 @@ import java.util.UUID;
 
 /**
  * Metadados de uma sessão. {@code active} = ainda recebendo pacotes (sem {@code endedAt});
- * {@code drivetrain} = FWD/RWD/AWD; {@code carClass} é o índice numérico do jogo.
+ * {@code drivetrain} = FWD/RWD/AWD; {@code carClass} é o índice numérico do jogo; {@code samplesPurged} = as
+ * amostras brutas foram apagadas ao reiniciar a coleta (resumo e voltas continuam, a telemetria some).
  */
 public record SessionDTO(UUID id,
                          String gameFormat,
@@ -20,7 +21,8 @@ public record SessionDTO(UUID id,
                          Instant startedAt,
                          Instant endedAt,
                          int sampleCount,
-                         boolean active) {
+                         boolean active,
+                         boolean samplesPurged) {
 
     public static SessionDTO from(final SessionMeta meta) {
         return from(meta, null);
@@ -41,7 +43,8 @@ public record SessionDTO(UUID id,
                 meta.startedAt(),
                 meta.endedAt(),
                 meta.sampleCount(),
-                meta.endedAt() == null);
+                meta.endedAt() == null,
+                meta.samplesPurgedAt() != null);
     }
 
     private static String drivetrainName(final int code) {

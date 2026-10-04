@@ -109,6 +109,11 @@ public class SampleRepository {
         return max == null ? -1 : max;
     }
 
+    /** Apaga fisicamente as amostras dessas sessões (uma passada por sessão, pelo índice de {@code session_id}). */
+    public void deleteBySessions(final List<UUID> sessionIds) {
+        jdbcTemplate.batchUpdate("DELETE FROM forza.samples WHERE session_id = ?", sessionIds.stream().map(id -> new Object[]{id}).toList());
+    }
+
     public List<SampleRow> findRange(final UUID sessionId, final int fromMs, final Integer toMs, final int limit) {
         final int upper = toMs == null ? Integer.MAX_VALUE : toMs;
         return jdbcTemplate.query(

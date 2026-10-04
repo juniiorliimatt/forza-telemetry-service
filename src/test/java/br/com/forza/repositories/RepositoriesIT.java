@@ -406,4 +406,64 @@ class RepositoriesIT {
             assertThat(e.recommendationJson()).isNull();
         });
     }
+
+    /** Sessão fechada de um carro/PI, com 3 amostras gravadas e contagem 5000 guardada. */
+    private UUID closedSession(final int car, final int pi, final Instant startedAt) {
+        final var base = Fixtures.session(UUID.randomUUID(), 2, null);
+        sessions.insert(new SessionMeta(base.id(), base.gameFormat(), car, 5, pi, 2, 8, 8000f, 1000f, null, startedAt, null, 0, null));
+        samples.batchInsert(base.id(), List.of(sample().tMs(0).build(), sample().tMs(50).build(), sample().tMs(100).build()));
+        sessions.close(base.id(), startedAt.plusSeconds(300), 5000, "{\"samples\":5000}");
+        return base.id();
+    }
+
+    private int sampleRows(final UUID id) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM forza.samples WHERE session_id = ?", Integer.class, id);
+    }
+
+    @Test
+    void purge_candidates_areTheClosedSessionsOfTheBuildExceptTheNewestN() {
+        final var t0 = Instant.parse("2026-11-01T10:00:00Z");
+        final var oldest = closedSession(7001, 850, t0);
+        final var middle = closedSession(7001, 850, t0.plusSeconds(600));
+        final var newest = closedSession(7001, 850, t0.plusSeconds(1200));
+        final var otherClass = closedSession(7001, 500, t0.plusSeconds(1800));
+        final var otherCar = closedSession(7002, 850, t0.plusSeconds(1800));
+        final var base = Fixtures.session(UUID.randomUUID(), 2, null);
+        sessions.insert(new SessionMeta(base.id(), base.gameFormat(), 7001, 5, 850, 2, 8, 8000f, 1000f, null, t0.plusSeconds(2400), null, 0, null));
+
+        final var candidates = sessions.findSamplePurgeCandidates("FH4/FH5/FH6", 7001, PerformanceClass.S2, 2);
+
+        assertThat(candidates).containsExactly(oldest);
+        assertThat(candidates).doesNotContain(middle, newest, otherClass, otherCar, base.id());
+        assertThat(sessions.findSamplePurgeCandidates("FH4/FH5/FH6", 7001, PerformanceClass.S2, 1)).containsExactly(middle, oldest);
+        assertThat(sessions.findSamplePurgeCandidates("FH4/FH5/FH6", 7001, PerformanceClass.S2, 0)).containsExactly(newest, middle, oldest);
+    }
+
+    @Test
+    void purge_deletesOnlyTheGivenSamples_andKeepsSessionSummaryAndCount() {
+        final var t0 = Instant.parse("2026-11-02T10:00:00Z");
+        final var purged = closedSession(7003, 850, t0);
+        final var kept = closedSession(7003, 850, t0.plusSeconds(600));
+
+        samples.deleteBySessions(List.of(purged));
+        sessions.markSamplesPurged(List.of(purged), Instant.parse("2026-11-03T00:00:00Z"));
+
+        assertThat(sampleRows(purged)).isZero();
+        assertThat(sampleRows(kept)).isEqualTo(3);
+        final var meta = sessions.findById(purged).orElseThrow();
+        assertThat(meta.samplesPurgedAt()).isEqualTo(Instant.parse("2026-11-03T00:00:00Z"));
+        assertThat(meta.sampleCount()).isEqualTo(5000);
+        assertThat(meta.summaryJson()).contains("5000");
+        assertThat(sessions.findById(kept).orElseThrow().samplesPurgedAt()).isNull();
+    }
+
+    @Test
+    void purge_alreadyPurgedSessions_areNotCandidatesAgain() {
+        final var t0 = Instant.parse("2026-11-04T10:00:00Z");
+        final var first = closedSession(7004, 850, t0);
+        closedSession(7004, 850, t0.plusSeconds(600));
+        sessions.markSamplesPurged(List.of(first), t0);
+
+        assertThat(sessions.findSamplePurgeCandidates("FH4/FH5/FH6", 7004, PerformanceClass.S2, 0)).doesNotContain(first);
+    }
 }

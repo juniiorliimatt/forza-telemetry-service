@@ -26,7 +26,7 @@ public class SessionRepository {
                    CASE WHEN s.ended_at IS NULL
                         THEN (SELECT COUNT(*) FROM forza.samples x WHERE x.session_id = s.id)
                         ELSE s.sample_count END AS sample_count,
-                   s.summary::text AS summary
+                   s.summary::text AS summary, s.samples_purged_at
               FROM forza.sessions s
             """;
 
@@ -39,6 +39,7 @@ public class SessionRepository {
         final int track = rs.getInt("track_ordinal");
         final Integer trackOrdinal = rs.wasNull() ? null : track;
         final OffsetDateTime endedAt = rs.getObject("ended_at", OffsetDateTime.class);
+        final OffsetDateTime purgedAt = rs.getObject("samples_purged_at", OffsetDateTime.class);
         return new SessionMeta(
                 rs.getObject("id", UUID.class),
                 rs.getString("game_format"),
@@ -53,7 +54,8 @@ public class SessionRepository {
                 rs.getObject("started_at", OffsetDateTime.class).toInstant(),
                 endedAt == null ? null : endedAt.toInstant(),
                 rs.getInt("sample_count"),
-                rs.getString("summary"));
+                rs.getString("summary"),
+                purgedAt == null ? null : purgedAt.toInstant());
     };
 
     private final JdbcTemplate jdbcTemplate;
@@ -97,6 +99,27 @@ public class SessionRepository {
                 + " AND s.performance_index BETWEEN ? AND ?"
                 + " AND s.started_at >= ? ORDER BY s.started_at DESC, s.id DESC LIMIT ?", MAPPER, gameFormat, carOrdinal,
                 performanceClass.minPi(), performanceClass.maxPi(), utc(since), limit);
+    }
+
+    /**
+     * Sessões encerradas de um carro/classe de PI cujas amostras ainda não foram apagadas, <b>menos as {@code keepNewest}
+     * mais recentes</b> (essas continuam com telemetria de amostra) — o que a limpeza de {@code forza.samples} pode apagar.
+     * Sessão aberta nunca entra. Conjunto pequeno (sessões de uma build), então {@code OFFSET} é inofensivo aqui.
+     */
+    public List<UUID> findSamplePurgeCandidates(final String gameFormat, final int carOrdinal, final PerformanceClass performanceClass,
+                                                final int keepNewest) {
+        return jdbcTemplate.queryForList("""
+                SELECT s.id FROM forza.sessions s
+                 WHERE s.ended_at IS NOT NULL AND s.samples_purged_at IS NULL AND s.game_format = ? AND s.car_ordinal = ?
+                   AND s.performance_index BETWEEN ? AND ?
+                 ORDER BY s.started_at DESC, s.id DESC OFFSET ?
+                """, UUID.class, gameFormat, carOrdinal, performanceClass.minPi(), performanceClass.maxPi(), keepNewest);
+    }
+
+    /** Registra que as amostras dessas sessões foram apagadas ({@code summary}, voltas e {@code sample_count} ficam). */
+    public void markSamplesPurged(final List<UUID> ids, final Instant at) {
+        jdbcTemplate.batchUpdate("UPDATE forza.sessions SET samples_purged_at = ? WHERE id = ?",
+                ids.stream().map(id -> new Object[]{utc(at), id}).toList());
     }
 
     /** Sessões em andamento (sem {@code ended_at}) de uma família de jogo, com a contagem de amostras ao vivo e sem o resumo. */

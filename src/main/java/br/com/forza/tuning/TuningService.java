@@ -51,6 +51,7 @@ public class TuningService {
     private final CarCatalog carCatalog;
     private final ObjectMapper objectMapper;
     private final TuningProperties properties;
+    private final SamplePurger samplePurger;
     private final Clock clock;
 
     public TuningService(final SessionRepository sessionRepository,
@@ -61,6 +62,7 @@ public class TuningService {
                          final CarCatalog carCatalog,
                          final ObjectMapper objectMapper,
                          final TuningProperties properties,
+                         final SamplePurger samplePurger,
                          final Clock clock) {
         this.sessionRepository = sessionRepository;
         this.checkpointRepository = checkpointRepository;
@@ -70,6 +72,7 @@ public class TuningService {
         this.carCatalog = carCatalog;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.samplePurger = samplePurger;
         this.clock = clock;
     }
 
@@ -154,12 +157,14 @@ public class TuningService {
     /**
      * Reinicia a coleta do carro: só sessões a partir de agora contam (use depois de aplicar um ajuste no jogo).
      * Se a recomendação já estava pronta, ela é salva no histórico antes — na mesma transação, então um erro ao
-     * salvar não descarta a coleta (o marco não se move).
+     * salvar não descarta a coleta (o marco não se move). Depois do marco, apaga as amostras brutas das sessões desse
+     * carro/classe ({@link SamplePurger}) — o tuning já está no histórico e o resumo de cada sessão fica guardado.
      */
     @Transactional
     public void resetCollection(final int carOrdinal, final PerformanceClass performanceClass) {
         saveToHistory(carOrdinal, performanceClass);
         checkpointRepository.upsert(GAME_FORMAT, carOrdinal, performanceClass, clock.instant());
+        samplePurger.purge(GAME_FORMAT, carOrdinal, performanceClass);
     }
 
     /** Tunings salvos, do mais recente para o mais antigo. */

@@ -54,9 +54,10 @@ class TuningServiceTest {
     private final SessionRepository sessions = mock(SessionRepository.class);
     private final TuningCheckpointRepository checkpoints = mock(TuningCheckpointRepository.class);
     private final TuningHistoryRepository history = mock(TuningHistoryRepository.class);
-    private final TuningProperties properties = new TuningProperties(10, 6000, 20, 5000);
+    private final SamplePurger purger = mock(SamplePurger.class);
+    private final TuningProperties properties = new TuningProperties(10, 6000, 20, 5000, 2);
     private final TuningService service = new TuningService(sessions, checkpoints, history, new TuningAggregator(), new TuningAdvisor(),
-            new CarCatalog(mapper), mapper, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+            new CarCatalog(mapper), mapper, properties, purger, Clock.fixed(NOW, ZoneOffset.UTC));
 
     private static Map<String, SuspensionWheel> susp(final double bottoming) {
         final var w = new SuspensionWheel(0.5, 0.8, bottoming, 0.0);
@@ -230,6 +231,15 @@ class TuningServiceTest {
     }
 
     @Test
+    void resetCollection_purgesTheSamplesOfThatBuildOnlyAfterTheCheckpointMoved() {
+        service.resetCollection(3667, S2);
+
+        final var order = inOrder(checkpoints, purger);
+        order.verify(checkpoints).upsert(HORIZON, 3667, S2, NOW);
+        order.verify(purger).purge(HORIZON, 3667, S2);
+    }
+
+    @Test
     void resetCollection_withAReadyRecommendation_savesItToTheHistoryBeforeMovingTheCheckpoint() throws Exception {
         when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
         when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
@@ -283,6 +293,7 @@ class TuningServiceTest {
         assertThatThrownBy(() -> service.resetCollection(3667, S2)).isInstanceOf(IllegalStateException.class);
 
         verify(checkpoints, never()).upsert(anyString(), anyInt(), any(), any());
+        verify(purger, never()).purge(anyString(), anyInt(), any());
     }
 
     @Test

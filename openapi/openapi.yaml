@@ -598,6 +598,8 @@ components:
         sampleCount:
           type: integer
           format: int32
+        samplesPurged:
+          type: boolean
         startedAt:
           type: string
           format: date-time
