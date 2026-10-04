@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.GrantedAuthority;
@@ -25,6 +26,9 @@ import org.springframework.web.client.RestClientException;
  */
 
 public class WorkboxTokenIntrospector implements OpaqueTokenIntrospector {
+
+  /** Prefixo das authorities geradas a partir de {@code modules} da introspecção (ex.: {@code MODULE_FORZA}). */
+  public static final String MODULE_AUTHORITY_PREFIX = "MODULE_";
 
   private final RestClient restClient;
   private final String introspectionUri;
@@ -68,7 +72,11 @@ public class WorkboxTokenIntrospector implements OpaqueTokenIntrospector {
 
       @SuppressWarnings("unchecked") final
               List<String> roles = (List<String>) result.getOrDefault("roles", List.of());
-      final Collection<GrantedAuthority> authorities = roles.stream().map(SimpleGrantedAuthority::new).collect(Collectors.toSet());
+      @SuppressWarnings("unchecked") final
+              List<String> modules = (List<String>) result.getOrDefault("modules", List.of());
+      final Collection<GrantedAuthority> authorities = Stream.concat(
+              roles.stream(), modules.stream().map(module -> MODULE_AUTHORITY_PREFIX + module))
+          .map(SimpleGrantedAuthority::new).collect(Collectors.toSet());
 
     return new OAuth2IntrospectionAuthenticatedPrincipal((String) result.get("sub"), attributes, authorities);
   }

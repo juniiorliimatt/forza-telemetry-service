@@ -10,6 +10,10 @@
   REST de leitura com um **resumo de tuning** por sessão (entrada pra skill
   `forza-tuning-engineer`).
 - *Resource server*: valida o Bearer do `workbox-api` por introspecção remota. Sem login.
+  Exige o módulo **FORZA**: a introspecção devolve `modules` (ADMIN: todos), o introspector
+  os converte em authorities `MODULE_<CODIGO>` e o `SecurityConfig` responde **403** a quem
+  está autenticado sem `MODULE_FORZA`. Todo teste de controller que stuba o introspector
+  precisa incluir `MODULE_FORZA` nas authorities.
 - Autoria: padrão do monorepo é o desenvolvedor implementar; aqui há **permissão total
   temporária** pro Claude ("Claude implementa tudo", 2026-10-03). Detalhes e limites em
   [raiz → Divisão de responsabilidade](../CLAUDE.md#divisão-de-responsabilidade).

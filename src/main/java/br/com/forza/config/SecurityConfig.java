@@ -24,6 +24,9 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    /** Módulo do workbox que libera este serviço — a introspecção do workbox-api o devolve em {@code modules} (ADMIN recebe todos). */
+    static final String MODULE_AUTHORITY = WorkboxTokenIntrospector.MODULE_AUTHORITY_PREFIX + "FORZA";
+
     @Value("${introspection.uri}")
     private String introspectionUri;
 
@@ -37,7 +40,7 @@ public class SecurityConfig {
     @Value("${cors.allowed-origins:http://localhost:7053,http://127.0.0.1:7053}")
     private List<String> allowedOrigins;
 
-    /** Filter chain única do serviço — todo endpoint exige token opaco válido, exceto health e Swagger. */
+    /** Filter chain única do serviço — todo endpoint exige token opaco válido <b>com o módulo FORZA</b> (403 sem ele), exceto health e Swagger. */
     @Bean
     public SecurityFilterChain securityFilterChain(final HttpSecurity httpSecurity, final OpaqueTokenIntrospector introspector) throws Exception {
         httpSecurity.csrf(AbstractHttpConfigurer::disable);
@@ -47,7 +50,7 @@ public class SecurityConfig {
         httpSecurity.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
-                .anyRequest().authenticated()
+                .anyRequest().hasAuthority(MODULE_AUTHORITY)
         );
 
         httpSecurity.oauth2ResourceServer(

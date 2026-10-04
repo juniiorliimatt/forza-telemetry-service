@@ -42,7 +42,8 @@ class LiveInfoControllerTest {
     @BeforeEach
     void authenticate() {
         when(introspector.introspect("tok")).thenReturn(new OAuth2IntrospectionAuthenticatedPrincipal("qa",
-                Map.of("sub", "qa"), List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+                Map.of("sub", "qa"),
+                List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("MODULE_FORZA"))));
     }
 
     @Test

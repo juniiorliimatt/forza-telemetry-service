@@ -47,6 +47,8 @@ class SessionControllerTest {
 
     private static final String BASE = "/api/v1/sessions";
     private static final String TOKEN = "token-valido";
+    private static final String TOKEN_SEM_MODULO = "token-sem-modulo";
+    private static final String TOKEN_OUTRO_MODULO = "token-outro-modulo";
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,8 +62,14 @@ class SessionControllerTest {
     @BeforeEach
     void stubIntrospector() {
         final OAuth2AuthenticatedPrincipal principal = new OAuth2IntrospectionAuthenticatedPrincipal("qa.user@workbox.local",
-                Map.of("sub", "qa.user@workbox.local"), List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                Map.of("sub", "qa.user@workbox.local"),
+                List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("MODULE_FORZA")));
         when(introspector.introspect(TOKEN)).thenReturn(principal);
+        when(introspector.introspect(TOKEN_SEM_MODULO)).thenReturn(new OAuth2IntrospectionAuthenticatedPrincipal("novato@workbox.local",
+                Map.of("sub", "novato@workbox.local"), List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+        when(introspector.introspect(TOKEN_OUTRO_MODULO)).thenReturn(new OAuth2IntrospectionAuthenticatedPrincipal("ana@workbox.local",
+                Map.of("sub", "ana@workbox.local"),
+                List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("MODULE_FINANCAS"))));
         when(introspector.introspect("token-revogado")).thenThrow(new BadOpaqueTokenException("Token inativo"));
     }
 
@@ -76,6 +84,16 @@ class SessionControllerTest {
     @Test
     void list_withoutToken_returnsUnauthorized() throws Exception {
         mockMvc.perform(get(BASE)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void list_authenticatedWithoutForzaModule_returnsForbidden() throws Exception {
+        mockMvc.perform(get(BASE).header("Authorization", "Bearer " + TOKEN_SEM_MODULO)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void list_withAnotherModuleOnly_returnsForbidden() throws Exception {
+        mockMvc.perform(get(BASE).header("Authorization", "Bearer " + TOKEN_OUTRO_MODULO)).andExpect(status().isForbidden());
     }
 
     @Test

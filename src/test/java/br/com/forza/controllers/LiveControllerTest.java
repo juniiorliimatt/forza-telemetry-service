@@ -49,7 +49,8 @@ class LiveControllerTest {
     @BeforeEach
     void authenticate() {
         when(introspector.introspect("tok")).thenReturn(new OAuth2IntrospectionAuthenticatedPrincipal("qa.user@workbox.local",
-                Map.of("sub", "qa.user@workbox.local"), List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+                Map.of("sub", "qa.user@workbox.local"),
+                List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("MODULE_FORZA"))));
     }
 
     private void stubLatest(final byte[] raw) {

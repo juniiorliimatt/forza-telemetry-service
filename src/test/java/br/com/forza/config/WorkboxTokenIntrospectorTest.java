@@ -52,6 +52,16 @@ class WorkboxTokenIntrospectorTest {
     }
 
     @Test
+    void introspect_activeToken_mapsModulesToModuleAuthorities() {
+        server.expect(requestTo(URI)).andRespond(withSuccess(
+                "{\"active\":true,\"sub\":\"ana@workbox.local\",\"roles\":[\"ROLE_USER\"],\"modules\":[\"FORZA\",\"FINANCAS\"]}",
+                MediaType.APPLICATION_JSON));
+
+        assertThat(introspector.introspect("abc").getAuthorities()).extracting("authority")
+                .containsExactlyInAnyOrder("ROLE_USER", "MODULE_FORZA", "MODULE_FINANCAS");
+    }
+
+    @Test
     void introspect_activeTokenWithoutRoles_hasNoAuthorities() {
         server.expect(requestTo(URI)).andRespond(withSuccess("{\"active\":true,\"sub\":\"x\"}", MediaType.APPLICATION_JSON));
 
