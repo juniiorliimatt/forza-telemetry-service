@@ -15,6 +15,7 @@ import br.com.forza.models.dto.TuningCarDTO;
 import br.com.forza.models.dto.TuningHistoryDTO;
 import br.com.forza.models.dto.TuningHistoryItemDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO;
+import br.com.forza.tuning.TuningBaseline;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningGuideDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningReadinessDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningSuggestionDTO;
@@ -87,7 +88,7 @@ class TuningControllerTest {
         final var guide = new TuningGuideDTO("molas", "Molas", "ADJUST", "1 ajuste sugerido", List.of("nota"), List.of(suggestion));
         when(tuningService.recommendation(3667, PerformanceClass.S2)).thenReturn(new TuningRecommendationDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD",
                 new TuningReadinessDTO(true, 12, 10, 12000, 6000, List.of()), Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-10T00:00:00Z"), null,
-                List.of(guide), List.of(suggestion)));
+                List.of(guide), List.of(suggestion), TuningBaseline.setup()));
 
         mockMvc.perform(get(BASE + "/cars/3667/S2").header("Authorization", "Bearer tok"))
                 .andExpect(status().isOk())
@@ -98,7 +99,10 @@ class TuningControllerTest {
                 .andExpect(jsonPath("$.thisCycle[0].parameter").value("Altura do solo traseira"))
                 .andExpect(jsonPath("$.thisCycle[0].amount").value(0.5))
                 .andExpect(jsonPath("$.thisCycle[0].unit").value("cm"))
-                .andExpect(jsonPath("$.thisCycle[0].magnitude").value("SMALL"));
+                .andExpect(jsonPath("$.thisCycle[0].magnitude").value("SMALL"))
+                .andExpect(jsonPath("$.initialSetup[0].id").value("pneus"))
+                .andExpect(jsonPath("$.initialSetup[0].items[0].parameter").value("Pressão dos pneus"))
+                .andExpect(jsonPath("$.initialSetup[0].items[0].front").value("1,5 a 2,0 bar"));
     }
 
     @Test
@@ -158,7 +162,7 @@ class TuningControllerTest {
         final var id = UUID.fromString("11111111-1111-1111-1111-111111111111");
         final var rec = new TuningRecommendationDTO(1105, "1964 Aston Martin DB5 Vantage", 3, 700, "A", "RWD",
                 new TuningReadinessDTO(true, 12, 10, 30_523, 6000, List.of()), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), null,
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
         when(tuningService.historyEntry(id)).thenReturn(new TuningHistoryDTO(id, Instant.parse("2026-10-03T19:50:00Z"), rec));
 
         mockMvc.perform(get(BASE + "/history/" + id).header("Authorization", "Bearer tok"))

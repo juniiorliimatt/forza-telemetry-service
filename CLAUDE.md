@@ -88,6 +88,13 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 - **Sessão em andamento no card**: `GET /tuning/cars` traz `activeSession` (amostras ao vivo + alvo `tuning.session-samples`, que é o
   mesmo `telemetry.session-max-samples`) por carro/classe; ela **não** entra no progresso até fechar, mas um carro só com
   sessão aberta também é listado (progresso zero). Sessão aberta antes do marco de coleta é ignorada.
+- **Configuração inicial** (`TuningBaseline`, campo `initialSetup` da `TuningRecommendationDTO`): a receita que o
+  desenvolvedor aplica em qualquer carro antes de afinar (pneus 1,5–2,0 bar, barras 1/65, molas 80/80, amortecimento 9/3,
+  freio 45%/105%, diferencial 100%/0%...) — dado **dele**, não deduzido da telemetria; ver a memória
+  `reference_forza_user_baseline_setup`. Vai em **toda** recomendação ao vivo (coletando ou pronta); o front a destaca como
+  "Recomendação inicial" só enquanto o carro coleta pela primeira vez. O advisor **não muda** (continua só "quanto mexer").
+  Fica **fora** das fotos do histórico (`withoutInitialSetup`), que só guardam o medido e recomendado. Valor novo =
+  editar `TuningBaseline` + `TuningBaselineTest`.
 - **Histórico de tunings** (`forza.tuning_history`, `GET /tuning/history[/{id}]`): ao **reiniciar a coleta** de um carro cuja
   recomendação já estava pronta, `TuningService.resetCollection` grava uma foto (JSONB da `TuningRecommendationDTO`)
   **antes** de mover o marco, na mesma transação (falha ao salvar = marco não se move). Sem dados suficientes nada é

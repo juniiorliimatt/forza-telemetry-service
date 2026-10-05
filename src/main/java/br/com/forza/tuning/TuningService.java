@@ -147,11 +147,11 @@ public class TuningService {
 
         if (!readiness.ready()) {
             return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(), drivetrain,
-                    readiness, windowFrom, windowTo, checkpoint.orElse(null), List.of(), List.of());
+                    readiness, windowFrom, windowTo, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup());
         }
         final TuningAdvisor.Advice advice = advisor.advise(aggregate, latest.drivetrain());
         return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(), drivetrain,
-                readiness, windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle());
+                readiness, windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle(), TuningBaseline.setup());
     }
 
     /**
@@ -194,7 +194,13 @@ public class TuningService {
         }
         return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(),
                 PerformanceClass.of(rec.performanceIndex()).name(), rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(),
-                rec.checkpointAt(), rec.guides(), rec.thisCycle());
+                rec.checkpointAt(), rec.guides(), rec.thisCycle(), rec.initialSetup());
+    }
+
+    /** A configuração inicial é fixa e só existe na tela ao vivo; a foto guarda só o que foi medido e recomendado. */
+    private static TuningRecommendationDTO withoutInitialSetup(final TuningRecommendationDTO rec) {
+        return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(), rec.performanceClass(),
+                rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(), rec.checkpointAt(), rec.guides(), rec.thisCycle(), List.of());
     }
 
     private void saveToHistory(final int carOrdinal, final PerformanceClass performanceClass) {
@@ -210,7 +216,7 @@ public class TuningService {
         try {
             historyRepository.insert(new TuningHistoryRepository.Entry(UUID.randomUUID(), GAME_FORMAT, carOrdinal, rec.carName(), rec.carClass(),
                     rec.performanceIndex(), rec.drivetrain(), clock.instant(), rec.windowFrom(), rec.windowTo(), rec.readiness().sessions(),
-                    rec.readiness().samples(), rec.thisCycle().size(), objectMapper.writeValueAsString(rec)));
+                    rec.readiness().samples(), rec.thisCycle().size(), objectMapper.writeValueAsString(withoutInitialSetup(rec))));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Não foi possível serializar a recomendação do carro " + carOrdinal, e);
         }

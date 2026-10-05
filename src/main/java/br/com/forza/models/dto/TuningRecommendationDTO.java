@@ -12,6 +12,9 @@ import java.util.List;
  * tem dados suficientes ({@code readiness.ready = false}).
  *
  * @param thisCycle até 3 ajustes prioritários, no máximo um por guia (um ciclo de teste por vez)
+ * @param initialSetup configuração inicial (ponto de partida) do desenvolvedor, em valores absolutos: o front a destaca como
+ *                     "recomendação inicial" enquanto o carro coleta pela primeira vez. Fotos salvas antes dela existir
+ *                     (ou a lista vazia) não a trazem — o front só a mostra na tela ao vivo
  */
 public record TuningRecommendationDTO(int carOrdinal,
                                       String carName,
@@ -24,7 +27,19 @@ public record TuningRecommendationDTO(int carOrdinal,
                                       Instant windowTo,
                                       Instant checkpointAt,
                                       List<TuningGuideDTO> guides,
-                                      List<TuningSuggestionDTO> thisCycle) {
+                                      List<TuningSuggestionDTO> thisCycle,
+                                      List<TuningSetupGroupDTO> initialSetup) {
+
+    /** Um grupo da configuração inicial (mesmos ids das guias de tuning: pneus, cambio, molas...). */
+    public record TuningSetupGroupDTO(String id, String title, List<TuningSetupItemDTO> items) {
+    }
+
+    /**
+     * Um parâmetro da configuração inicial. {@code front}/{@code rear} para o que tem um valor por eixo; {@code value}
+     * para o que é um valor único ou uma receita em texto; {@code note} é o "quando/por quê". Tudo em texto, como o jogo exibe.
+     */
+    public record TuningSetupItemDTO(String parameter, String front, String rear, String value, String note) {
+    }
 
     /** Dados suficientes? {@code missing} explica o que falta, em português. */
     public record TuningReadinessDTO(boolean ready,

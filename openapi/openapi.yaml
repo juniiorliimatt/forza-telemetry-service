@@ -812,6 +812,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TuningGuideDTO"
+        initialSetup:
+          type: array
+          items:
+            $ref: "#/components/schemas/TuningSetupGroupDTO"
         performanceClass:
           type: string
         performanceIndex:
@@ -829,6 +833,30 @@ components:
         windowTo:
           type: string
           format: date-time
+    TuningSetupGroupDTO:
+      type: object
+      properties:
+        id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TuningSetupItemDTO"
+        title:
+          type: string
+    TuningSetupItemDTO:
+      type: object
+      properties:
+        front:
+          type: string
+        note:
+          type: string
+        parameter:
+          type: string
+        rear:
+          type: string
+        value:
+          type: string
     TuningSuggestionDTO:
       type: object
       properties:

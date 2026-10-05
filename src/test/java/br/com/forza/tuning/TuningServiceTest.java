@@ -127,6 +127,21 @@ class TuningServiceTest {
     }
 
     @Test
+    void recommendation_alwaysCarriesTheInitialSetup_whetherCollectingOrReady() throws Exception {
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 7, 2000, 0));
+        final var collecting = service.recommendation(3667, S2);
+
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        final var ready = service.recommendation(3667, S2);
+
+        assertThat(collecting.readiness().ready()).isFalse();
+        assertThat(collecting.initialSetup()).isEqualTo(TuningBaseline.setup());
+        assertThat(ready.readiness().ready()).isTrue();
+        assertThat(ready.initialSetup()).isEqualTo(TuningBaseline.setup());
+    }
+
+    @Test
     void recommendation_notEnoughSessions_explainsWhatIsMissing_andReturnsNoGuides() throws Exception {
         when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 7, 2000, 0));
         when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
@@ -260,6 +275,8 @@ class TuningServiceTest {
         assertThat(saved.samples()).isEqualTo(12_000);
         assertThat(saved.adjustments()).isPositive();
         assertThat(mapper.readValue(saved.recommendationJson(), TuningRecommendationDTO.class).guides()).hasSize(9);
+        // A configuração inicial é dado fixo da tela ao vivo: não vai pra dentro de cada foto do histórico.
+        assertThat(mapper.readValue(saved.recommendationJson(), TuningRecommendationDTO.class).initialSetup()).isEmpty();
     }
 
     @Test
