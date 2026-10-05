@@ -231,6 +231,39 @@ class TuningServiceTest {
     }
 
     @Test
+    void recommendation_carWithOnlyAnOpenSession_isCollectingWithZeroProgress_andCarriesTheInitialSetup() {
+        when(checkpoints.find(HORIZON, 1105, PerformanceClass.A)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(1105), eq(PerformanceClass.A), any(), anyInt())).thenReturn(List.of());
+        when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(openSession(1105, 700, 1, 800)));
+
+        final var rec = service.recommendation(1105, PerformanceClass.A);
+
+        assertThat(rec.readiness().ready()).isFalse();
+        assertThat(rec.readiness().sessions()).isZero();
+        assertThat(rec.readiness().samples()).isZero();
+        assertThat(rec.readiness().missing()).isNotEmpty();
+        assertThat(rec.carOrdinal()).isEqualTo(1105);
+        assertThat(rec.carName()).isEqualTo("1964 Aston Martin DB5 Vantage");
+        assertThat(rec.performanceClass()).isEqualTo("A");
+        assertThat(rec.performanceIndex()).isEqualTo(700);
+        assertThat(rec.windowFrom()).isNull();
+        assertThat(rec.guides()).isEmpty();
+        assertThat(rec.thisCycle()).isEmpty();
+        assertThat(rec.initialSetup()).isEqualTo(TuningBaseline.setup());
+    }
+
+    @Test
+    void recommendation_openSessionOfAnotherClassOrBeforeTheCheckpoint_doesNotCount() {
+        when(checkpoints.find(HORIZON, 1105, PerformanceClass.A)).thenReturn(Optional.of(NOW));
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(1105), eq(PerformanceClass.A), any(), anyInt())).thenReturn(List.of());
+        when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(
+                openSession(1105, 416, 1, 800),                      // outra classe (C)
+                openSession(1105, 700, 3 * 24 * 60, 800)));          // classe A, mas aberta antes do marco (NOW)
+
+        assertThatThrownBy(() -> service.recommendation(1105, PerformanceClass.A)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void recommendation_unknownCar_throwsNotFound() {
         when(checkpoints.find(HORIZON, 99, S2)).thenReturn(Optional.empty());
         when(sessions.findClosedForTuning(eq(HORIZON), eq(99), eq(S2), any(), anyInt())).thenReturn(List.of());

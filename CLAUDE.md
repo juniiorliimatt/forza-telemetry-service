@@ -93,7 +93,8 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   freio 45%/105%, diferencial 100%/0%...) — dado **dele**, não deduzido da telemetria; ver a memória
   `reference_forza_user_baseline_setup`. Vai em **toda** recomendação ao vivo (coletando ou pronta); o front a destaca como
   "Recomendação inicial" só enquanto o carro coleta pela primeira vez. O advisor **não muda** (continua só "quanto mexer").
-  Fica **fora** das fotos do histórico (`withoutInitialSetup`), que só guardam o medido e recomendado. Valor novo =
+  Carro só com a sessão **aberta** (nenhuma fechada desde o marco) responde 200 "coletando" (0 sessões, sem janela) — mesma
+  regra da lista `cars()` —, e não 404; 404 só sem sessão alguma desde o marco. Fica **fora** das fotos do histórico (`withoutInitialSetup`), que só guardam o medido e recomendado. Valor novo =
   editar `TuningBaseline` + `TuningBaselineTest`.
 - **Histórico de tunings** (`forza.tuning_history`, `GET /tuning/history[/{id}]`): ao **reiniciar a coleta** de um carro cuja
   recomendação já estava pronta, `TuningService.resetCollection` grava uma foto (JSONB da `TuningRecommendationDTO`)

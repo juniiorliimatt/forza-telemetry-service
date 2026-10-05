@@ -128,7 +128,14 @@ public class TuningService {
         final List<SessionMeta> metas = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH),
                 properties.maxSessions());
         if (metas.isEmpty()) {
-            throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
+            // Só tem a sessão em andamento (ou nenhuma fechada ainda): o carro está na lista (cars()), então responde "coletando"
+            // com progresso zero — é justamente quando a configuração inicial mais ajuda. Sem sessão nenhuma desde o marco, 404.
+            final SessionMeta open = openSessionSince(carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH));
+            if (open == null) {
+                throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
+            }
+            return new TuningRecommendationDTO(carOrdinal, carName(open), open.carClass(), open.performanceIndex(), performanceClass.name(),
+                    SessionDTO.from(open).drivetrain(), readiness(0, 0), null, null, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup());
         }
         final List<TuningAggregator.SessionSummary> usable = new ArrayList<>();
         final List<SessionMeta> usableMetas = new ArrayList<>();
@@ -195,6 +202,15 @@ public class TuningService {
         return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(),
                 PerformanceClass.of(rec.performanceIndex()).name(), rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(),
                 rec.checkpointAt(), rec.guides(), rec.thisCycle(), rec.initialSetup());
+    }
+
+    /** Sessão em andamento desse carro/classe iniciada a partir de {@code since} (marco da coleta); nula se não houver. */
+    private SessionMeta openSessionSince(final int carOrdinal, final PerformanceClass performanceClass, final Instant since) {
+        final CarBuild build = new CarBuild(carOrdinal, performanceClass);
+        return sessionRepository.findActiveMeta(GAME_FORMAT).stream()
+                .filter(meta -> buildOf(meta).equals(build) && !meta.startedAt().isBefore(since))
+                .findFirst()
+                .orElse(null);
     }
 
     /** A configuração inicial é fixa e só existe na tela ao vivo; a foto guarda só o que foi medido e recomendado. */
