@@ -41,12 +41,18 @@ public record TuningRecommendationDTO(int carOrdinal,
     public record TuningSetupItemDTO(String parameter, String front, String rear, String value, String note) {
     }
 
-    /** Dados suficientes? {@code missing} explica o que falta, em português. */
+    /**
+     * Dados suficientes? {@code ready} = nível inicial atingido (libera as guias); {@code highConfidence} = nível de ajuste
+     * fino atingido (também exige estar pronto). {@code missing} explica, em português, o que falta pro nível inicial.
+     */
     public record TuningReadinessDTO(boolean ready,
                                      int sessions,
                                      int requiredSessions,
                                      long samples,
                                      long requiredSamples,
+                                     boolean highConfidence,
+                                     int highRequiredSessions,
+                                     long highRequiredSamples,
                                      List<String> missing) {
     }
 

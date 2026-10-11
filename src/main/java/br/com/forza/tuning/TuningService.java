@@ -115,9 +115,10 @@ public class TuningService {
             final SessionMeta latest = window.isEmpty() ? open : window.get(0);
             final long samples = window.stream().mapToLong(SessionMeta::sampleCount).sum();
             final boolean ready = window.size() >= properties.minSessions() && samples >= properties.minSamples();
+            final boolean highConfidence = ready && isHighConfidence(window.size(), samples);
             cars.add(new TuningCarDTO(build.carOrdinal(), carName(latest), latest.carClass(), latest.performanceIndex(), build.performanceClass().name(),
                     SessionDTO.from(latest).drivetrain(), window.size(), samples, properties.minSessions(), properties.minSamples(), ready,
-                    latest.startedAt(), active));
+                    highConfidence, properties.highMinSessions(), properties.highMinSamples(), latest.startedAt(), active));
         }
         cars.sort(Comparator.comparing(TuningCarDTO::lastSessionAt).reversed());
         return cars;
@@ -248,7 +249,14 @@ public class TuningService {
             final long needSamples = properties.minSamples() - samples;
             missing.add("Faltam " + needSamples + " amostras (" + samples + " de " + properties.minSamples() + ").");
         }
-        return new TuningReadinessDTO(missing.isEmpty(), sessions, properties.minSessions(), samples, properties.minSamples(), missing);
+        final boolean ready = missing.isEmpty();
+        return new TuningReadinessDTO(ready, sessions, properties.minSessions(), samples, properties.minSamples(), ready && isHighConfidence(sessions, samples),
+                properties.highMinSessions(), properties.highMinSamples(), missing);
+    }
+
+    /** Nível de ajuste fino: sessões E amostras, como no nível inicial. */
+    private boolean isHighConfidence(final int sessions, final long samples) {
+        return sessions >= properties.highMinSessions() && samples >= properties.highMinSamples();
     }
 
     private Optional<TuningSummaryDTO> parse(final String json) {

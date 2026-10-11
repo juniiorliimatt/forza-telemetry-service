@@ -680,6 +680,14 @@ components:
           format: int32
         drivetrain:
           type: string
+        highConfidence:
+          type: boolean
+        highRequiredSamples:
+          type: integer
+          format: int64
+        highRequiredSessions:
+          type: integer
+          format: int32
         lastSessionAt:
           type: string
           format: date-time
@@ -774,6 +782,14 @@ components:
     TuningReadinessDTO:
       type: object
       properties:
+        highConfidence:
+          type: boolean
+        highRequiredSamples:
+          type: integer
+          format: int64
+        highRequiredSessions:
+          type: integer
+          format: int32
         missing:
           type: array
           items:

@@ -55,7 +55,7 @@ class TuningServiceTest {
     private final TuningCheckpointRepository checkpoints = mock(TuningCheckpointRepository.class);
     private final TuningHistoryRepository history = mock(TuningHistoryRepository.class);
     private final SamplePurger purger = mock(SamplePurger.class);
-    private final TuningProperties properties = new TuningProperties(10, 6000, 20, 5000, 2);
+    private final TuningProperties properties = new TuningProperties(10, 6000, 15, 20_000, 20, 5000, 2);
     private final TuningService service = new TuningService(sessions, checkpoints, history, new TuningAggregator(), new TuningAdvisor(),
             new CarCatalog(mapper), mapper, properties, purger, Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -169,6 +169,67 @@ class TuningServiceTest {
         assertThat(rec.readiness().requiredSamples()).isEqualTo(6000);
         assertThat(rec.readiness().missing()).anySatisfy(m -> assertThat(m).containsIgnoringCase("amostras").doesNotContainIgnoringCase("min"));
         assertThat(rec.guides()).isEmpty();
+    }
+
+    @Test
+    void recommendation_readyAtTheInitialLevel_isNotHighConfidenceYet() throws Exception {
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));   // 12 sessões, 12000 amostras
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        final var readiness = service.recommendation(3667, S2).readiness();
+
+        assertThat(readiness.ready()).isTrue();
+        assertThat(readiness.highConfidence()).isFalse();
+        assertThat(readiness.highRequiredSessions()).isEqualTo(15);
+        assertThat(readiness.highRequiredSamples()).isEqualTo(20_000);
+        assertThat(readiness.missing()).isEmpty();   // "missing" só descreve o nível inicial; a alta confiança é um bônus
+    }
+
+    @Test
+    void recommendation_reachingBothHighThresholds_isHighConfidence() throws Exception {
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 16, 1500, 9.0));   // 16 sessões, 24000 amostras
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        final var readiness = service.recommendation(3667, S2).readiness();
+
+        assertThat(readiness.ready()).isTrue();
+        assertThat(readiness.highConfidence()).isTrue();
+    }
+
+    @Test
+    void recommendation_highConfidenceNeedsSessionsAndSamples_notJustOne() throws Exception {
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 16, 1000, 9.0));   // sessões ok, 16000 amostras
+        final var fewSamples = service.recommendation(3667, S2).readiness();
+
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 2500, 9.0));   // 30000 amostras, poucas sessões
+        final var fewSessions = service.recommendation(3667, S2).readiness();
+
+        assertThat(fewSamples.ready()).isTrue();
+        assertThat(fewSamples.highConfidence()).isFalse();
+        assertThat(fewSessions.ready()).isTrue();
+        assertThat(fewSessions.highConfidence()).isFalse();
+    }
+
+    @Test
+    void recommendation_notReady_isNeverHighConfidence() throws Exception {
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 7, 2000, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        assertThat(service.recommendation(3667, S2).readiness().highConfidence()).isFalse();
+    }
+
+    @Test
+    void cars_exposeTheHighConfidenceLevelAndItsThresholds() throws Exception {
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(sessionsOf(3667, 16, 1500, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        final var car = service.cars().get(0);
+
+        assertThat(car.ready()).isTrue();
+        assertThat(car.highConfidence()).isTrue();
+        assertThat(car.highRequiredSessions()).isEqualTo(15);
+        assertThat(car.highRequiredSamples()).isEqualTo(20_000);
     }
 
     @Test

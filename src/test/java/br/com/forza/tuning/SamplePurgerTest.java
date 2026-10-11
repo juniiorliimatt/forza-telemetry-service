@@ -26,7 +26,7 @@ class SamplePurgerTest {
 
     private final SessionRepository sessions = mock(SessionRepository.class);
     private final SampleRepository samples = mock(SampleRepository.class);
-    private final TuningProperties properties = new TuningProperties(10, 50_000, 20, 5000, 2);
+    private final TuningProperties properties = new TuningProperties(5, 20_000, 10, 50_000, 20, 5000, 2);
     private final SamplePurger purger = new SamplePurger(sessions, samples, properties, Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
@@ -44,7 +44,7 @@ class SamplePurgerTest {
 
     @Test
     void purge_keepsTheConfiguredNumberOfNewestSessions() {
-        final var otherKeep = new SamplePurger(sessions, samples, new TuningProperties(10, 50_000, 20, 5000, 0), Clock.fixed(NOW, ZoneOffset.UTC));
+        final var otherKeep = new SamplePurger(sessions, samples, new TuningProperties(5, 20_000, 10, 50_000, 20, 5000, 0), Clock.fixed(NOW, ZoneOffset.UTC));
         when(sessions.findSamplePurgeCandidates(HORIZON, 1, PerformanceClass.A, 0)).thenReturn(List.of(UUID.randomUUID()));
 
         assertThat(otherKeep.purge(HORIZON, 1, PerformanceClass.A)).isEqualTo(1);

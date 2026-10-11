@@ -66,19 +66,22 @@ class TuningControllerTest {
 
     @Test
     void cars_returnsTheCarsWithProgress() throws Exception {
-        when(tuningService.cars()).thenReturn(List.of(new TuningCarDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD", 7, 9000, 10, 50_000, false, Instant.parse("2026-10-10T12:00:00Z"),
+        when(tuningService.cars()).thenReturn(List.of(new TuningCarDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD", 7, 9000, 5, 20_000, false, false, 10, 50_000, Instant.parse("2026-10-10T12:00:00Z"),
                 new TuningCarDTO.ActiveSessionDTO(2340, 5000, Instant.parse("2026-10-10T12:30:00Z")))));
 
         mockMvc.perform(get(BASE + "/cars").header("Authorization", "Bearer tok"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].carOrdinal").value(3667))
                 .andExpect(jsonPath("$[0].performanceClass").value("S2"))
-                .andExpect(jsonPath("$[0].requiredSamples").value(50_000))
+                .andExpect(jsonPath("$[0].requiredSamples").value(20_000))
+                .andExpect(jsonPath("$[0].highConfidence").value(false))
+                .andExpect(jsonPath("$[0].highRequiredSessions").value(10))
+                .andExpect(jsonPath("$[0].highRequiredSamples").value(50_000))
                 .andExpect(jsonPath("$[0].activeSession.samples").value(2340))
                 .andExpect(jsonPath("$[0].activeSession.targetSamples").value(5000))
                 .andExpect(jsonPath("$[0].carName").value("2021 Porsche 911 GT3"))
                 .andExpect(jsonPath("$[0].sessions").value(7))
-                .andExpect(jsonPath("$[0].requiredSessions").value(10))
+                .andExpect(jsonPath("$[0].requiredSessions").value(5))
                 .andExpect(jsonPath("$[0].ready").value(false));
     }
 
@@ -87,13 +90,15 @@ class TuningControllerTest {
         final var suggestion = new TuningSuggestionDTO(1, true, "molas", "Altura do solo traseira", "REAR", "INCREASE", "porque", "7% no fundo", 0.5, "cm", "SMALL");
         final var guide = new TuningGuideDTO("molas", "Molas", "ADJUST", "1 ajuste sugerido", List.of("nota"), List.of(suggestion));
         when(tuningService.recommendation(3667, PerformanceClass.S2)).thenReturn(new TuningRecommendationDTO(3667, "2021 Porsche 911 GT3", 4, 812, "S2", "RWD",
-                new TuningReadinessDTO(true, 12, 10, 12000, 6000, List.of()), Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-10T00:00:00Z"), null,
+                new TuningReadinessDTO(true, 12, 10, 12000, 6000, false, 15, 20_000, List.of()), Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-10-10T00:00:00Z"), null,
                 List.of(guide), List.of(suggestion), TuningBaseline.setup()));
 
         mockMvc.perform(get(BASE + "/cars/3667/S2").header("Authorization", "Bearer tok"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.performanceClass").value("S2"))
                 .andExpect(jsonPath("$.readiness.ready").value(true))
+                .andExpect(jsonPath("$.readiness.highConfidence").value(false))
+                .andExpect(jsonPath("$.readiness.highRequiredSamples").value(20000))
                 .andExpect(jsonPath("$.guides[0].id").value("molas"))
                 .andExpect(jsonPath("$.guides[0].suggestions[0].direction").value("INCREASE"))
                 .andExpect(jsonPath("$.thisCycle[0].parameter").value("Altura do solo traseira"))
@@ -161,7 +166,7 @@ class TuningControllerTest {
     void historyEntry_returnsTheSavedRecommendation() throws Exception {
         final var id = UUID.fromString("11111111-1111-1111-1111-111111111111");
         final var rec = new TuningRecommendationDTO(1105, "1964 Aston Martin DB5 Vantage", 3, 700, "A", "RWD",
-                new TuningReadinessDTO(true, 12, 10, 30_523, 6000, List.of()), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), null,
+                new TuningReadinessDTO(true, 12, 10, 30_523, 6000, true, 15, 20_000, List.of()), Instant.parse("2026-10-03T19:02:00Z"), Instant.parse("2026-10-03T19:28:00Z"), null,
                 List.of(), List.of(), List.of());
         when(tuningService.historyEntry(id)).thenReturn(new TuningHistoryDTO(id, Instant.parse("2026-10-03T19:50:00Z"), rec));
 

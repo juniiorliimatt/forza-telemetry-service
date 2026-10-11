@@ -57,8 +57,11 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   replicou os marcos antigos para as 7 classes). `TuningService` pega as sessões **encerradas com resumo** do carro
   naquela classe, só as
   iniciadas após o **marco de coleta** (`tuning_checkpoints`) e só as
-  `tuning.max-sessions` (20) mais recentes; exige `tuning.min-sessions` (10) **e** `tuning.min-samples` (50000
-  amostras = 10 sessões cheias de 5000) — contagem de sessões sozinha não basta, uma sessão pode ter poucas amostras.
+  `tuning.max-sessions` (20) mais recentes; tem **dois níveis**, cada um exigindo sessões **e** amostras
+  (contagem de sessões sozinha não basta, uma sessão pode ter poucas amostras): **inicial** (`ready`, libera as guias) =
+  `tuning.min-sessions` (5) + `tuning.min-samples` (20000, ~17 min a 20 Hz); **alta confiança** (`highConfidence`, ajuste
+  fino; só existe se `ready`) = `tuning.high-min-sessions` (10) + `tuning.high-min-samples` (50000, ~42 min). `missing` só
+  descreve o nível inicial.
 - `TuningAggregator` combina os resumos ponderando por amostras; `TuningAdvisor` aplica as regras
   sintoma→ajuste da skill `forza-tuning-engineer` (matriz e limiares: bottoming > 3%, pneus 170–210 °F, eixos > 15 °F,
   limitador na última marcha, travamento > 5%, patinagem > 15%, balanço com diferença ≥ 20 pontos e ≥ 150 amostras).
@@ -142,8 +145,8 @@ catálogo de outra família (FM7 e Sled não têm). `carName` (nulo se desconhec
   `lapNumber > 0` (no mundo aberto é 0 — conferido em amostras reais: 0 = exploração a ~50 km/h, 1+ = voltas a
   130–170 km/h); `racePosition` não é usado (não validado no mundo aberto; falso positivo impediria a rotação).
   Sprints sem volta (`lapNumber` 0) rotacionam no meio — limitação conhecida. Corrida longa passa de 5000 sem teto.
-  Uma sessão parada na garagem fica "Ativa" sem amostras até voltar a andar ou trocar de carro. 10 sessões cheias = 50000
-  amostras = mínimo do tuning (tempo não entra na regra).
+  Uma sessão parada na garagem fica "Ativa" sem amostras até voltar a andar ou trocar de carro. 5 sessões cheias = 25000
+  amostras (nível inicial do tuning pede 5 sessões/20000; 10/50000 é a alta confiança; tempo não entra na regra).
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s
   (`flush-interval`, `flush-batch-size=200`) com `reWriteBatchedInserts=true` na URL.
 - **JDBC em vez de JPA** de propósito (ingestão em lote de série temporal; arrays `REAL[]`

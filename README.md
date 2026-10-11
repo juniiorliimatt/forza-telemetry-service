@@ -85,8 +85,9 @@ mudanças de mola, barra, diferencial, freio, câmbio e pressão).
   continua na mesma sessão. Como o jogo não avisa que o carro está na garagem (manda `IsRaceOn=1` com o carro parado),
   **carro parado não gera amostra** e só as amostras limitam a sessão: ela **fecha sozinha a cada 5000 amostras
   gravadas** (`telemetry.session-max-samples`) e a próxima abre na sequência; numa corrida/evento (`lapNumber > 0`) espera
-  terminar. O desligamento do serviço não fecha a sessão: ao voltar, a do mesmo carro e classe é retomada. O tuning exige
-  10 sessões e 50000 amostras (10 sessões cheias); tempo não entra na regra. Sessões com menos de 100 amostras são
+  terminar. O desligamento do serviço não fecha a sessão: ao voltar, a do mesmo carro e classe é retomada. O tuning tem dois
+  níveis: inicial (5 sessões e 20000 amostras, libera a recomendação) e alta confiança (10 sessões e 50000 amostras, ajuste
+  fino); tempo não entra na regra. Sessões com menos de 100 amostras são
   descartadas ao fechar.
 - **Downsample** 60 → ~20 Hz (`telemetry.sample-every=3`), gravação em lote a cada 1 s.
   Unidades do jogo: velocidade em m/s, temperatura de pneu em °F, rodas na ordem FL, FR, RL, RR.
