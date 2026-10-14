@@ -79,7 +79,10 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   não mexe nela. `SetupTargets` transforma o passo do advisor em `current → target` (`atual ± passo`, travado no mín/máx;
   mola em pontos percentuais do curso) e, se o valor já está no limite (`atLimit`), tira a sugestão do ciclo e promove a
   próxima. `apply` ("Apliquei") grava os alvos do ciclo como valores atuais e reinicia a coleta (409 sem setup aceito ou sem
-  alvo). Sugestões sem campo no catálogo (altura do solo, faixa de marchas) seguem só com o passo.
+  alvo). Sugestões sem campo no catálogo (faixa de marchas, "1ª à 3ª") seguem só com o passo.
+  **Altura do solo** é campo `perCar` (`ride_height_front/rear`, na guia Molas: valor atual + mín/máx do slider, como a
+  aerodinâmica) e **fica sempre no máximo** (decisão do desenvolvedor: baixar o carro faz o jogo perder velocidade — comportamento do
+  jogo). Por isso o advisor **nunca** sugere altura do solo (o bottoming vira só "Rigidez de compressão") e a receita inicial diz "máximo".
 - **Sem setup aceito, só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição.
   Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
   setup antigo contaminam a média. Aerodinâmica não tem sinal na telemetria (`NO_SIGNAL`).
@@ -94,7 +97,7 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
 - **Quantidade do ajuste** (`StepCatalog`): o Data Out não traz o setup atual nem o curso dos sliders (e o forzahorizonhub
   confirma que não lista valores stock por carro), então cada sugestão traz `amount`/`unit`/`magnitude` = **tamanho do passo
   deste ciclo**, não o valor final: pneus 0,1 bar · cambagem 0,2° · convergência 0,1° · barras 2 pontos · molas 5 pontos percentuais do
-  curso do slider (curso = máx − mín do slider, varia por carro; o front mostra a conta com exemplo) · altura 0,5 cm · amortecimento 1 ponto · freio (pressão 5 / equilíbrio 1) e diferencial 5 pontos
+  curso do slider (curso = máx − mín do slider, varia por carro; o front mostra a conta com exemplo) · amortecimento 1 ponto · freio (pressão 5 / equilíbrio 1) e diferencial 5 pontos
   percentuais · relações 0,1. Cresce com a severidade (SMALL ×1 < 1,5 ≤ MEDIUM ×2 < 2,5 ≤ LARGE ×3). Parâmetro desconhecido
   → sem número (nunca inventado). Valores absolutos exigiriam peso/distribuição informados (modelo de frequência natural).
 - **Marchas**: o jogo reporta ré como `0` e neutro/troca como `11` (comprovado em dados reais: 11 aparece em movimento

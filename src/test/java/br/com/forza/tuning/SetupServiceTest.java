@@ -35,6 +35,7 @@ class SetupServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-13T12:00:00Z");
     private static final Map<String, Range> RANGES = Map.of("spring_front", new Range(20, 220), "spring_rear", new Range(20, 220),
+            "ride_height_front", new Range(20, 220), "ride_height_rear", new Range(20, 220),
             "downforce_front", new Range(20, 220), "downforce_rear", new Range(20, 220));
 
     private final CarSetupStore store = mock(CarSetupStore.class);
@@ -66,7 +67,7 @@ class SetupServiceTest {
         assertThat(dto.gearCount()).isEqualTo(6);
         assertThat(dto.values()).containsEntry("tire_pressure_front", 1.75).containsEntry("brake_balance", 45.0).containsEntry("brake_pressure", 105.0)
                 .containsEntry("diff_accel_rear", 100.0).containsEntry("diff_decel_rear", 0.0).containsEntry("caster", 7.0);
-        assertThat(dto.values()).doesNotContainKeys("final_drive", "gear_1", "downforce_front");   // sem receita: o usuário informa
+        assertThat(dto.values()).doesNotContainKeys("final_drive", "gear_1", "downforce_front", "ride_height_front");   // sem receita: o usuário informa
         assertThat(dto.ranges()).isEmpty();
         assertThat(dto.fields()).extracting(SetupDTO.FieldDTO::key).contains("tire_pressure_front", "gear_6").doesNotContain("gear_7");
     }

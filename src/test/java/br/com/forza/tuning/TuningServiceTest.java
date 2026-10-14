@@ -65,6 +65,7 @@ class TuningServiceTest {
         final Map<String, Double> values = new java.util.HashMap<>();
         SetupCatalog.fields(6).forEach(f -> values.put(f.key(), f.perCar() ? 100.0 : (f.min() + f.max()) / 2.0));
         final Map<String, SetupCatalog.Range> ranges = Map.of("spring_front", new SetupCatalog.Range(20, 220), "spring_rear", new SetupCatalog.Range(20, 220),
+                "ride_height_front", new SetupCatalog.Range(20, 220), "ride_height_rear", new SetupCatalog.Range(20, 220),
                 "downforce_front", new SetupCatalog.Range(20, 220), "downforce_rear", new SetupCatalog.Range(20, 220));
         return new CarSetupStore.CarSetup(6, values, ranges, NOW.minusSeconds(3600L * 24));
     }

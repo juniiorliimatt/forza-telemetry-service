@@ -270,15 +270,12 @@ class TuningAdvisorTest {
 
     // ---- Suspensão: bottoming ----
     @Test
-    void bottomingOnAnAxle_raisesRideHeightAndCompression_onThatAxleOnly() {
+    void bottomingOnAnAxle_raisesCompression_onThatAxleOnly_andNeverTouchesRideHeight() {
         final var agg = with(b -> b.bottoming(wheels(1.0, 1.0, 7.5, 6.5)));
         final var guides = advisor.advise(agg, RWD).guides();
 
-        assertThat(guide(guides, "molas").suggestions()).anySatisfy(x -> {
-            assertThat(x.axle()).isEqualTo("REAR");
-            assertThat(x.direction()).isEqualTo("INCREASE");
-            assertThat(x.parameter()).containsIgnoringCase("altura");
-        });
+        // O carro fica sempre na altura máxima (baixar faz o jogo perder velocidade): altura do solo nunca é ajuste.
+        assertThat(all(guides)).noneSatisfy(x -> assertThat(x.parameter()).containsIgnoringCase("altura"));
         assertThat(guide(guides, "amortecimento").suggestions()).anySatisfy(x -> {
             assertThat(x.axle()).isEqualTo("REAR");
             assertThat(x.parameter()).containsIgnoringCase("compressão");

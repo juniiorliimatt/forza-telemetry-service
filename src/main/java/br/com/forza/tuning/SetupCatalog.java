@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 /**
  * Parâmetros do setup que o usuário informa por carro, com os limites que o jogo aceita (mín/máx dos sliders). Os limites
- * são fixos e iguais para todo carro, exceto molas e aerodinâmica, que variam por carro: para esses o usuário informa o
+ * são fixos e iguais para todo carro, exceto molas, altura do solo e aerodinâmica, que variam por carro: para esses o usuário informa o
  * intervalo do slider. Pressão sempre em bar. Os ids de guia são os do menu do jogo (os mesmos de {@link TuningBaseline}).
  * Serve à validação, ao formulário (limites devolvidos pela API) e ao advisor (que trava o valor-alvo entre mín e máx).
  */
@@ -58,6 +58,9 @@ public final class SetupCatalog {
         out.add(fixed("arb_rear", "barras", "Barra estabilizadora traseira", "REAR", "pontos", 1.0, 65.0));
         out.add(perCar("spring_front", "molas", "Mola dianteira", "FRONT"));
         out.add(perCar("spring_rear", "molas", "Mola traseira", "REAR"));
+        // Altura do solo: varia por carro e fica sempre no máximo (baixar faz o jogo perder velocidade), por isso o advisor nunca a sugere.
+        out.add(perCar("ride_height_front", "molas", "Altura do solo dianteira (sempre no máximo)", "FRONT"));
+        out.add(perCar("ride_height_rear", "molas", "Altura do solo traseira (sempre no máximo)", "REAR"));
         out.add(fixed("rebound_front", "amortecimento", "Rigidez de retorno dianteira", "FRONT", "pontos", 1.0, 20.0));
         out.add(fixed("rebound_rear", "amortecimento", "Rigidez de retorno traseira", "REAR", "pontos", 1.0, 20.0));
         out.add(fixed("bump_front", "amortecimento", "Rigidez de compressão dianteira", "FRONT", "pontos", 1.0, 20.0));
@@ -79,7 +82,7 @@ public final class SetupCatalog {
     }
 
     /**
-     * Campo do setup que a sugestão do advisor mexe; vazio quando não há campo correspondente (altura do solo, faixa de
+     * Campo do setup que a sugestão do advisor mexe; vazio quando não há campo correspondente (faixa de
      * marchas), caso em que a sugestão segue só com o passo, sem valor-alvo.
      */
     public static Optional<String> keyFor(final String guide, final String parameter, final String axle) {

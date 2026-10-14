@@ -30,7 +30,6 @@ final class StepCatalog {
             new Base("barra", 2.0, "pontos"),
             // Pontos percentuais do curso (máx − mín do slider), como o resto: "15% da mola" soaria como 15% do valor atual.
             new Base("mola", 5.0, "pontos percentuais do curso do slider"),
-            new Base("altura do solo", 0.5, "cm"),
             new Base("rigidez de", 1.0, "pontos"),
             new Base("diferencial", 5.0, "pontos percentuais"),
             new Base("relação", 0.1, "na relação"),

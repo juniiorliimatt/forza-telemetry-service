@@ -22,7 +22,6 @@ class StepCatalogTest {
             "Barra traseira (anti-rolagem)|1.0|2.0|pontos",
             "Mola dianteira|1.0|5.0|pontos percentuais do curso do slider",
             "Mola traseira|1.0|5.0|pontos percentuais do curso do slider",
-            "Altura do solo dianteira|1.0|0.5|cm",
             "Rigidez de compressão traseira|1.0|1.0|pontos",
             "Pressão de freio|1.0|5.0|pontos percentuais",
             "Equilíbrio de freio|1.0|1.0|pontos percentuais",

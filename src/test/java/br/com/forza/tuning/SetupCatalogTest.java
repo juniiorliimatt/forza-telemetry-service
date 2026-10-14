@@ -23,6 +23,7 @@ class SetupCatalogTest {
     private static Map<String, Range> validRanges() {
         return new HashMap<>(Map.of(
                 "spring_front", new Range(20, 200), "spring_rear", new Range(20, 200),
+                "ride_height_front", new Range(20, 200), "ride_height_rear", new Range(20, 200),
                 "downforce_front", new Range(20, 200), "downforce_rear", new Range(20, 200)));
     }
 
@@ -50,12 +51,35 @@ class SetupCatalogTest {
     }
 
     @Test
-    void springsAndAeroDependOnTheCar() {
-        for (final String key : List.of("spring_front", "spring_rear", "downforce_front", "downforce_rear")) {
+    void springsRideHeightAndAeroDependOnTheCar() {
+        for (final String key : List.of("spring_front", "spring_rear", "ride_height_front", "ride_height_rear", "downforce_front", "downforce_rear")) {
             final Field f = SetupCatalog.find(key, 6).orElseThrow();
             assertThat(f.perCar()).isTrue();
             assertThat(f.min()).isNull();
         }
+    }
+
+    @Test
+    void rideHeightIsInTheSpringsTab_perAxle_andTheAdvisorNeverMapsToIt() {
+        final Field front = SetupCatalog.find("ride_height_front", 6).orElseThrow();
+        final Field rear = SetupCatalog.find("ride_height_rear", 6).orElseThrow();
+
+        assertThat(front.guide()).isEqualTo("molas");
+        assertThat(front.axle()).isEqualTo("FRONT");
+        assertThat(rear.axle()).isEqualTo("REAR");
+        assertThat(SetupCatalog.keyFor("molas", "Altura do solo dianteira", "FRONT")).isEmpty();
+    }
+
+    @Test
+    void requiresTheRideHeightRangeAndKeepsTheValueInsideIt() {
+        final Map<String, Range> ranges = validRanges();
+        ranges.remove("ride_height_front");
+        final Map<String, Double> values = validValues();
+        values.put("ride_height_rear", 500.0);
+
+        assertThat(SetupCatalog.validate(6, values, ranges))
+                .anyMatch(e -> e.contains("ride_height_front"))
+                .anyMatch(e -> e.contains("ride_height_rear"));
     }
 
     @Test

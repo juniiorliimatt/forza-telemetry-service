@@ -107,6 +107,14 @@ class TuningBaselineTest {
     }
 
     @Test
+    void rideHeight_isAlwaysAtTheMaximum_becauseLoweringTheCarMakesTheGameLoseSpeed() {
+        final var rideHeight = item("molas", "Altura do solo");
+
+        assertThat(rideHeight.value()).isEqualTo("máximo");
+        assertThat(rideHeight.note()).containsIgnoringCase("velocidade");
+    }
+
+    @Test
     void defaultValues_onlyUseKnownFields_andStayInsideTheGameLimits() {
         TuningBaseline.defaultValues().forEach((key, value) -> {
             final var field = SetupCatalog.find(key, SetupCatalog.MAX_GEARS).orElseThrow(() -> new AssertionError("campo desconhecido: " + key));
