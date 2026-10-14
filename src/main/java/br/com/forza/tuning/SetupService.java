@@ -11,6 +11,8 @@ import br.com.forza.telemetry.PerformanceClass;
 import br.com.forza.tuning.CarSetupStore.CarSetup;
 import br.com.forza.tuning.SetupCatalog.Range;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,7 +57,7 @@ public class SetupService {
             throw new InvalidSetupException(errors);
         }
         return persist(carOrdinal, performanceClass, store.find(carOrdinal, performanceClass), new CarSetup(gearCount, new LinkedHashMap<>(values),
-                new LinkedHashMap<>(ranges), clock.instant()));
+                new LinkedHashMap<>(ranges), now()));
     }
 
     /**
@@ -82,7 +84,12 @@ public class SetupService {
         if (!errors.isEmpty()) {
             throw new InvalidSetupException(errors);
         }
-        return persist(carOrdinal, performanceClass, Optional.of(current), new CarSetup(current.gearCount(), values, new HashMap<>(current.ranges()), clock.instant()));
+        return persist(carOrdinal, performanceClass, Optional.of(current), new CarSetup(current.gearCount(), values, new HashMap<>(current.ranges()), now()));
+    }
+
+    /** O Postgres guarda microssegundos: sem truncar, a resposta traria um instante diferente do que a próxima leitura devolve. */
+    private Instant now() {
+        return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
 
     /** Apaga o setup: o carro volta ao rascunho e a coleta para (nenhuma sessão conta até aceitar de novo). */

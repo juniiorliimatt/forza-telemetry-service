@@ -99,6 +99,17 @@ class SetupServiceTest {
     }
 
     @Test
+    void save_confirmedAtIsTruncatedToMicros_soTheResponseMatchesWhatTheDatabaseKeeps() {
+        final var nanoClock = Clock.fixed(Instant.parse("2026-10-13T12:00:00.123456789Z"), ZoneOffset.UTC);
+        final var nanoService = new SetupService(store, tuning, nanoClock);
+        when(store.find(3667, S2)).thenReturn(Optional.empty());
+
+        final SetupDTO dto = nanoService.save(3667, S2, request(validValues()));
+
+        assertThat(dto.confirmedAt()).isEqualTo(Instant.parse("2026-10-13T12:00:00.123456Z"));
+    }
+
+    @Test
     void save_invalid_isRejectedWithEveryErrorAndStoresNothing() {
         final Map<String, Double> values = validValues();
         values.put("tire_pressure_front", 9.0);
