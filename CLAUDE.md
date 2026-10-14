@@ -82,7 +82,7 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   alvo). Sugestões sem campo no catálogo (faixa de marchas, "1ª à 3ª") seguem só com o passo.
   **Altura do solo** é campo `perCar` (`ride_height_front/rear`, na guia Molas: valor atual + mín/máx do slider, como a
   aerodinâmica) e **fica sempre no máximo** (decisão do desenvolvedor: baixar o carro faz o jogo perder velocidade — comportamento do
-  jogo). Por isso o advisor **nunca** sugere altura do solo (o bottoming vira só "Rigidez de compressão") e a receita inicial diz "máximo".
+  jogo). Por isso o advisor **nunca** sugere altura do solo (o bottoming vira "Mola ↑" (mais dura, no eixo que bate) e "Rigidez de compressão ↑"; mola do bottoming e do balanço no mesmo eixo passam por `dedupe` (fica a de maior severidade)) e a receita inicial diz "máximo".
 - **Sem setup aceito, só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição.
   Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
   setup antigo contaminam a média. Aerodinâmica não tem sinal na telemetria (`NO_SIGNAL`).

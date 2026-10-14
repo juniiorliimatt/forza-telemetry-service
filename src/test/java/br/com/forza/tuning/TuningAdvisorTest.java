@@ -285,6 +285,31 @@ class TuningAdvisorTest {
     }
 
     @Test
+    void bottomingOnAnAxle_alsoSuggestsAStifferSpring_onThatAxleOnly() {
+        final var agg = with(b -> b.bottoming(wheels(1.0, 1.0, 7.5, 6.5)));
+        final var guides = advisor.advise(agg, RWD).guides();
+
+        assertThat(guide(guides, "molas").suggestions()).singleElement().satisfies(x -> {
+            assertThat(x.parameter()).isEqualTo("Mola traseira");
+            assertThat(x.axle()).isEqualTo("REAR");
+            assertThat(x.direction()).isEqualTo("INCREASE");
+            assertThat(x.evidence()).contains("traseira").contains("fundo de curso");
+        });
+    }
+
+    @Test
+    void bottomingAndOversteerOnTheSameSpring_keepOnlyTheStrongerSuggestion_neverBothDirections() {
+        // bottoming traseiro fraco (4% / limite 3% → severidade ~1,3) contra sobresterço forte na saída (diferença de 56 pontos → severidade ~2,8)
+        final var neutral = new Phase(600, 10, 10);
+        final var over = new Phase(700, 4.0, 60.0);
+        final var agg = with(b -> b.bottoming(wheels(1.0, 1.0, 4.0, 4.0)).phases(neutral, neutral, over));
+        final var springs = guide(advisor.advise(agg, RWD).guides(), "molas").suggestions().stream()
+                .filter(x -> x.parameter().equals("Mola traseira")).toList();
+
+        assertThat(springs).singleElement().satisfies(x -> assertThat(x.direction()).isEqualTo("DECREASE"));
+    }
+
+    @Test
     void bottomingUnder3Percent_isFine() {
         final var agg = with(b -> b.bottoming(wheels(2.9)));
 

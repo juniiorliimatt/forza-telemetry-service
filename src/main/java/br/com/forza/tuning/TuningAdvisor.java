@@ -248,7 +248,9 @@ public class TuningAdvisor {
         final List<Draft> out = new ArrayList<>();
         final boolean evaluated = a.bottomingPct().size() == 4 || evaluable(a.entry()) || evaluable(a.exit());
         // Sem sugestão de altura do solo: o carro fica sempre na altura máxima (baixar faz o jogo perder velocidade), então o
-        // bottoming só vira ajuste na compressão do amortecimento.
+        // bottoming vira mola mais dura (aqui) e mais compressão (guia de amortecimento).
+        bottomingDrafts(a).forEach(b -> out.add(new Draft("molas", "Mola " + axleWord(b.axle()), b.axle(), "INCREASE",
+                "A suspensão está batendo no limite de curso; uma mola mais dura devolve curso útil.", b.evidence(), b.severity())));
         if (understeer(a.entry())) {
             out.add(new Draft("molas", "Mola dianteira", "FRONT", "DECREASE",
                     "Subesterço na entrada: mola dianteira mais macia aumenta a transferência de carga e a aderência na frente ao frear.",
@@ -262,7 +264,8 @@ public class TuningAdvisor {
         return new GuideDraft("molas", "Molas", evaluated, "Sem batida de suspensão relevante e balanço em curva equilibrado.",
                 "Sem dados de suspensão nas sessões.",
                 List.of("Valores absolutos de mola dependem do peso e da distribuição do carro (tela de ajuste).",
-                        "A altura do solo fica sempre no máximo: baixar o carro faz o jogo perder velocidade."), out);
+                        "A altura do solo fica sempre no máximo: baixar o carro faz o jogo perder velocidade."),
+                dedupe(out));   // bottoming (mola ↑) e balanço (mola ↓) no mesmo eixo: fica só a de maior severidade
     }
 
     private GuideDraft amortecimento(final TuningAggregate a) {
