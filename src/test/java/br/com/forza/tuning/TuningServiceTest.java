@@ -119,6 +119,45 @@ class TuningServiceTest {
     }
 
     @Test
+    void cars_afterRestartingTheCollection_stillListsTheCarUntilNewSessionsArrive() throws Exception {
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(sessionsOf(3667, 8, 1000, 0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.of(NOW));   // coleta reiniciada agora: nenhuma sessão é posterior
+
+        final var cars = service.cars();
+
+        assertThat(cars).singleElement().satisfies(c -> {
+            assertThat(c.setupConfirmed()).isTrue();
+            assertThat(c.sessions()).isZero();
+            assertThat(c.ready()).isFalse();
+            assertThat(c.carName()).isEqualTo("2021 Porsche 911 GT3");
+        });
+    }
+
+    @Test
+    void recommendation_afterRestartingTheCollection_isCollectingWithZeroProgress_notNotFound() throws Exception {
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.of(NOW));
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), eq(NOW), anyInt())).thenReturn(List.of());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), eq(Instant.EPOCH), anyInt())).thenReturn(sessionsOf(3667, 1, 1000, 0));
+
+        final var rec = service.recommendation(3667, S2);
+
+        assertThat(rec.setupConfirmed()).isTrue();
+        assertThat(rec.readiness().ready()).isFalse();
+        assertThat(rec.readiness().sessions()).isZero();
+        assertThat(rec.carName()).isEqualTo("2021 Porsche 911 GT3");
+        assertThat(rec.checkpointAt()).isEqualTo(NOW);
+        assertThat(rec.initialSetup()).isEqualTo(TuningBaseline.setup());
+    }
+
+    @Test
+    void recommendation_withConfirmedSetupButNoSessionAtAll_isStillNotFound() {
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.recommendation(3667, S2)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void recommendation_withConfirmedSetup_carriesCurrentAndTargetOnTheSuggestions() throws Exception {
         when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
         when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
@@ -389,14 +428,20 @@ class TuningServiceTest {
     }
 
     @Test
-    void recommendation_openSessionOfAnotherClassOrBeforeTheCheckpoint_doesNotCount() {
+    void recommendation_openSessionOfAnotherClassOrBeforeTheCheckpoint_doesNotCount_andTheCarStillOpens() {
         when(checkpoints.find(HORIZON, 1105, PerformanceClass.A)).thenReturn(Optional.of(NOW));
         when(sessions.findClosedForTuning(eq(HORIZON), eq(1105), eq(PerformanceClass.A), any(), anyInt())).thenReturn(List.of());
         when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(
                 openSession(1105, 416, 1, 800),                      // outra classe (C)
                 openSession(1105, 700, 3 * 24 * 60, 800)));          // classe A, mas aberta antes do marco (NOW)
 
-        assertThatThrownBy(() -> service.recommendation(1105, PerformanceClass.A)).isInstanceOf(ResourceNotFoundException.class);
+        // nenhuma das duas conta: progresso zero; e a identidade vem da sessão da classe A, não da da classe C (PI 416)
+        final var rec = service.recommendation(1105, PerformanceClass.A);
+
+        assertThat(rec.readiness().sessions()).isZero();
+        assertThat(rec.readiness().samples()).isZero();
+        assertThat(rec.performanceClass()).isEqualTo("A");
+        assertThat(rec.performanceIndex()).isEqualTo(700);
     }
 
     @Test
@@ -607,7 +652,12 @@ class TuningServiceTest {
         when(sessions.findActiveMeta(HORIZON)).thenReturn(List.of(openSession(1105, 700, 10, 800)));
         when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.of(NOW.minusSeconds(60)));   // marco depois do início
 
-        assertThat(service.cars()).isEmpty();
+        // o carro continua na lista (para abrir o setup), mas a sessão anterior ao marco não conta nem aparece como "em andamento"
+        assertThat(service.cars()).singleElement().satisfies(c -> {
+            assertThat(c.sessions()).isZero();
+            assertThat(c.samples()).isZero();
+            assertThat(c.activeSession()).isNull();
+        });
     }
 
     @Test

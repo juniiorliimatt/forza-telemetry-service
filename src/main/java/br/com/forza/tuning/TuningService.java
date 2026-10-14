@@ -115,9 +115,8 @@ public class TuningService {
             final SessionMeta open = activeByBuild.get(build);
             final TuningCarDTO.ActiveSessionDTO active = !confirmed || open == null || open.startedAt().isBefore(since) ? null
                     : new TuningCarDTO.ActiveSessionDTO(open.sampleCount(), properties.sessionSamples(), open.startedAt());
-            if (confirmed && window.isEmpty() && active == null) {
-                continue;
-            }
+            // Todo carro com sessão aparece, mesmo logo após reiniciar a coleta (progresso zero): senão ele some da lista até a
+            // próxima sessão e o usuário não consegue abrir o setup que acabou de salvar.
             final SessionMeta latest = !window.isEmpty() ? window.get(0) : !closed.isEmpty() ? closed.get(0) : open;
             final long samples = window.stream().mapToLong(SessionMeta::sampleCount).sum();
             final boolean ready = window.size() >= properties.minSessions() && samples >= properties.minSamples();
@@ -139,12 +138,11 @@ public class TuningService {
         final List<SessionMeta> metas = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH),
                 properties.maxSessions());
         if (metas.isEmpty()) {
-            // Só tem a sessão em andamento (ou nenhuma fechada ainda): o carro está na lista (cars()), então responde "coletando"
-            // com progresso zero — é justamente quando a configuração inicial mais ajuda. Sem sessão nenhuma desde o marco, 404.
-            final SessionMeta open = openSessionSince(carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH));
-            if (open == null) {
-                throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
-            }
+            // Só tem a sessão em andamento (ou nenhuma desde o marco): o carro está na lista (cars()), então responde "coletando"
+            // com progresso zero — é justamente quando a configuração inicial mais ajuda, e a tela precisa abrir (aba Setup incluída)
+            // logo depois de aceitar o setup, quando a coleta recomeça do zero. 404 só se o carro nunca teve sessão nessa classe.
+            final SessionMeta open = Optional.ofNullable(openSessionSince(carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH)))
+                    .orElseGet(() -> latestSession(carOrdinal, performanceClass));
             return new TuningRecommendationDTO(carOrdinal, carName(open), open.carClass(), open.performanceIndex(), performanceClass.name(),
                     SessionDTO.from(open).drivetrain(), readiness(0, 0), null, null, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup(), true);
         }
@@ -178,11 +176,7 @@ public class TuningService {
      * (fechada ou em andamento) para existir na lista; sem nenhuma, 404 como sempre.
      */
     private TuningRecommendationDTO awaitingSetup(final int carOrdinal, final PerformanceClass performanceClass) {
-        final SessionMeta latest = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, Instant.EPOCH, 1).stream().findFirst()
-                .orElseGet(() -> openSessionSince(carOrdinal, performanceClass, Instant.EPOCH));
-        if (latest == null) {
-            throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
-        }
+        final SessionMeta latest = latestSession(carOrdinal, performanceClass);
         final TuningReadinessDTO base = readiness(0, 0);
         final TuningReadinessDTO readiness = new TuningReadinessDTO(false, 0, base.requiredSessions(), 0, base.requiredSamples(), false,
                 base.highRequiredSessions(), base.highRequiredSamples(),
@@ -232,6 +226,16 @@ public class TuningService {
         return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(),
                 PerformanceClass.of(rec.performanceIndex()).name(), rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(),
                 rec.checkpointAt(), rec.guides(), rec.thisCycle(), rec.initialSetup(), rec.setupConfirmed());
+    }
+
+    /** A sessão mais recente do carro nessa classe (fechada, senão em andamento), de qualquer época: dá a identidade do carro. 404 se nunca houve. */
+    private SessionMeta latestSession(final int carOrdinal, final PerformanceClass performanceClass) {
+        final SessionMeta latest = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, Instant.EPOCH, 1).stream().findFirst()
+                .orElseGet(() -> openSessionSince(carOrdinal, performanceClass, Instant.EPOCH));
+        if (latest == null) {
+            throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
+        }
+        return latest;
     }
 
     /** Sessão em andamento desse carro/classe iniciada a partir de {@code since} (marco da coleta); nula se não houver. */
