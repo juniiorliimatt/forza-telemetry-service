@@ -248,6 +248,148 @@ paths:
           description: No Content
       tags:
       - tuning-controller
+  /api/v1/tuning/cars/{carOrdinal}/{performanceClass}/setup:
+    delete:
+      operationId: delete
+      parameters:
+      - in: path
+        name: carOrdinal
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - in: path
+        name: performanceClass
+        required: true
+        schema:
+          type: string
+          enum:
+          - D
+          - C
+          - B
+          - A
+          - S1
+          - S2
+          - R
+      responses:
+        "204":
+          description: Setup apagado
+        "404":
+          content:
+            application/problem+json: {}
+          description: Nenhum setup cadastrado
+      tags:
+      - setup-controller
+    get:
+      operationId: get
+      parameters:
+      - in: path
+        name: carOrdinal
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - in: path
+        name: performanceClass
+        required: true
+        schema:
+          type: string
+          enum:
+          - D
+          - C
+          - B
+          - A
+          - S1
+          - S2
+          - R
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SetupDTO"
+          description: Setup (ou rascunho a confirmar)
+      tags:
+      - setup-controller
+    put:
+      operationId: save
+      parameters:
+      - in: path
+        name: carOrdinal
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - in: path
+        name: performanceClass
+        required: true
+        schema:
+          type: string
+          enum:
+          - D
+          - C
+          - B
+          - A
+          - S1
+          - S2
+          - R
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SetupDTO"
+          description: Setup salvo
+        "422":
+          content:
+            application/problem+json: {}
+          description: "Valor fora dos limites do jogo ou campo faltando (lista em\
+            \ {@code errors})"
+      tags:
+      - setup-controller
+  /api/v1/tuning/cars/{carOrdinal}/{performanceClass}/setup/apply:
+    post:
+      operationId: apply
+      parameters:
+      - in: path
+        name: carOrdinal
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - in: path
+        name: performanceClass
+        required: true
+        schema:
+          type: string
+          enum:
+          - D
+          - C
+          - B
+          - A
+          - S1
+          - S2
+          - R
+      responses:
+        "200":
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SetupDTO"
+          description: Setup atualizado com os alvos do ciclo
+        "409":
+          content:
+            application/problem+json: {}
+          description: "Setup ainda não aceito, ou nenhum ajuste do ciclo tem valor-alvo\
+            \ para aplicar"
+      tags:
+      - setup-controller
   /api/v1/tuning/history:
     get:
       operationId: history
@@ -365,6 +507,27 @@ components:
         peakTorqueRpm:
           type: number
           format: double
+    FieldDTO:
+      type: object
+      properties:
+        axle:
+          type: string
+        guide:
+          type: string
+        key:
+          type: string
+        label:
+          type: string
+        max:
+          type: number
+          format: double
+        min:
+          type: number
+          format: double
+        perCar:
+          type: boolean
+        unit:
+          type: string
     Gear:
       type: object
       properties:
@@ -486,6 +649,15 @@ components:
           items:
             type: number
             format: float
+    Range:
+      type: object
+      properties:
+        max:
+          type: number
+          format: double
+        min:
+          type: number
+          format: double
     SampleDTO:
       type: object
       properties:
@@ -615,6 +787,45 @@ components:
             $ref: "#/components/schemas/SessionDTO"
         nextCursor:
           type: string
+    SetupDTO:
+      type: object
+      properties:
+        confirmed:
+          type: boolean
+        confirmedAt:
+          type: string
+          format: date-time
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldDTO"
+        gearCount:
+          type: integer
+          format: int32
+        ranges:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Range"
+        values:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+    SetupRequest:
+      type: object
+      properties:
+        gearCount:
+          type: integer
+          format: int32
+        ranges:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Range"
+        values:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
     SpeedKmh:
       type: object
       properties:
@@ -710,6 +921,8 @@ components:
         sessions:
           type: integer
           format: int32
+        setupConfirmed:
+          type: boolean
     TuningGuideDTO:
       type: object
       properties:
@@ -839,6 +1052,8 @@ components:
           format: int32
         readiness:
           $ref: "#/components/schemas/TuningReadinessDTO"
+        setupConfirmed:
+          type: boolean
         thisCycle:
           type: array
           items:
@@ -879,8 +1094,13 @@ components:
         amount:
           type: number
           format: double
+        atLimit:
+          type: boolean
         axle:
           type: string
+        current:
+          type: number
+          format: double
         direction:
           type: string
         evidence:
@@ -896,6 +1116,11 @@ components:
           format: int32
         rationale:
           type: string
+        setupKey:
+          type: string
+        target:
+          type: number
+          format: double
         thisCycle:
           type: boolean
         unit:

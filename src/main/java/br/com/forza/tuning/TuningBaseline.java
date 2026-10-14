@@ -2,7 +2,9 @@ package br.com.forza.tuning;
 
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningSetupGroupDTO;
 import br.com.forza.models.dto.TuningRecommendationDTO.TuningSetupItemDTO;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Configuração inicial do desenvolvedor: a receita que ele aplica em qualquer carro antes de afinar. Ele mesmo diz que "não
@@ -38,6 +40,38 @@ public final class TuningBaseline {
                     perAxle("Aceleração", "100%", "100%", "Nos eixos que o carro tem (em tração só traseira ou só dianteira, o do eixo motriz)."),
                     perAxle("Desaceleração", "0%", "0%", null),
                     single("Equilíbrio", "70 a 80%", "Diferencial central, em carro de tração integral.")));
+
+    /**
+     * A receita em valores numéricos, para pré-preencher o formulário de setup (o usuário confere e aceita). Só entra o que a receita
+     * define: câmbio, aerodinâmica e o intervalo das molas dependem do carro e ficam de fora, para o usuário informar. Pressão em
+     * bar: 1,5 (carro pequeno) a 2,0 (grande), pré-preenchida no meio.
+     */
+    public static Map<String, Double> defaultValues() {
+        final Map<String, Double> values = new LinkedHashMap<>();
+        values.put("tire_pressure_front", 1.75);
+        values.put("tire_pressure_rear", 1.75);
+        values.put("camber_front", 0.0);
+        values.put("camber_rear", 0.0);
+        values.put("toe_front", 0.0);
+        values.put("toe_rear", 0.0);
+        values.put("caster", 7.0);
+        values.put("arb_front", 1.0);
+        values.put("arb_rear", 65.0);
+        values.put("spring_front", 80.0);
+        values.put("spring_rear", 80.0);
+        values.put("rebound_front", 9.0);
+        values.put("rebound_rear", 9.0);
+        values.put("bump_front", 3.0);
+        values.put("bump_rear", 3.0);
+        values.put("brake_balance", 45.0);
+        values.put("brake_pressure", 105.0);
+        values.put("diff_accel_front", 100.0);
+        values.put("diff_accel_rear", 100.0);
+        values.put("diff_decel_front", 0.0);
+        values.put("diff_decel_rear", 0.0);
+        values.put("diff_center", 75.0);
+        return values;
+    }
 
     private TuningBaseline() {
     }

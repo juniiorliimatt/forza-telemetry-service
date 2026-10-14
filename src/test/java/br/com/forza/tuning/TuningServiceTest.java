@@ -56,8 +56,82 @@ class TuningServiceTest {
     private final TuningHistoryRepository history = mock(TuningHistoryRepository.class);
     private final SamplePurger purger = mock(SamplePurger.class);
     private final TuningProperties properties = new TuningProperties(10, 6000, 15, 20_000, 20, 5000, 2);
-    private final TuningService service = new TuningService(sessions, checkpoints, history, new TuningAggregator(), new TuningAdvisor(),
+    private final CarSetupStore setups = mock(CarSetupStore.class);
+    private final TuningService service = new TuningService(sessions, checkpoints, setups, history, new TuningAggregator(), new TuningAdvisor(),
             new CarCatalog(mapper), mapper, properties, purger, Clock.fixed(NOW, ZoneOffset.UTC));
+
+    /** Setup conferido: todos os campos no meio do intervalo (molas/aero em 100, de 20 a 220). A maioria dos testes parte daqui. */
+    private static CarSetupStore.CarSetup confirmedSetup() {
+        final Map<String, Double> values = new java.util.HashMap<>();
+        SetupCatalog.fields(6).forEach(f -> values.put(f.key(), f.perCar() ? 100.0 : (f.min() + f.max()) / 2.0));
+        final Map<String, SetupCatalog.Range> ranges = Map.of("spring_front", new SetupCatalog.Range(20, 220), "spring_rear", new SetupCatalog.Range(20, 220),
+                "downforce_front", new SetupCatalog.Range(20, 220), "downforce_rear", new SetupCatalog.Range(20, 220));
+        return new CarSetupStore.CarSetup(6, values, ranges, NOW.minusSeconds(3600L * 24));
+    }
+
+    {
+        when(setups.find(anyInt(), any())).thenReturn(Optional.of(confirmedSetup()));
+    }
+
+    @Test
+    void cars_withoutConfirmedSetup_listsTheCarWithZeroProgress_untilTheUserAcceptsTheSetup() throws Exception {
+        when(setups.find(3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedMeta(HORIZON)).thenReturn(sessionsOf(3667, 12, 1000, 0));
+        when(checkpoints.find(eq(HORIZON), anyInt(), any())).thenReturn(Optional.empty());
+
+        final var cars = service.cars();
+
+        assertThat(cars).singleElement().satisfies(c -> {
+            assertThat(c.setupConfirmed()).isFalse();
+            assertThat(c.sessions()).isZero();
+            assertThat(c.samples()).isZero();
+            assertThat(c.ready()).isFalse();
+            assertThat(c.carName()).isEqualTo("2021 Porsche 911 GT3");
+        });
+    }
+
+    @Test
+    void recommendation_withoutConfirmedSetup_asksToConfirmAndDoesNotCountSessions() throws Exception {
+        when(setups.find(3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        final var rec = service.recommendation(3667, S2);
+
+        assertThat(rec.setupConfirmed()).isFalse();
+        assertThat(rec.readiness().ready()).isFalse();
+        assertThat(rec.readiness().sessions()).isZero();
+        assertThat(rec.readiness().missing()).singleElement().asString().containsIgnoringCase("setup");
+        assertThat(rec.guides()).isEmpty();
+        assertThat(rec.thisCycle()).isEmpty();
+        assertThat(rec.initialSetup()).isEqualTo(TuningBaseline.setup());
+        assertThat(rec.carName()).isEqualTo("2021 Porsche 911 GT3");
+    }
+
+    @Test
+    void recommendation_withoutConfirmedSetupAndWithoutSessions_isStillNotFound() {
+        when(setups.find(3667, S2)).thenReturn(Optional.empty());
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(List.of());
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.recommendation(3667, S2)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void recommendation_withConfirmedSetup_carriesCurrentAndTargetOnTheSuggestions() throws Exception {
+        when(sessions.findClosedForTuning(eq(HORIZON), eq(3667), eq(S2), any(), anyInt())).thenReturn(sessionsOf(3667, 12, 1000, 9.0));
+        when(checkpoints.find(HORIZON, 3667, S2)).thenReturn(Optional.empty());
+
+        final var rec = service.recommendation(3667, S2);
+
+        assertThat(rec.setupConfirmed()).isTrue();
+        assertThat(rec.thisCycle()).isNotEmpty();
+        assertThat(rec.thisCycle()).filteredOn(s -> s.setupKey() != null).isNotEmpty().allSatisfy(s -> {
+            assertThat(s.current()).isNotNull();
+            assertThat(s.target()).isNotNull();
+            assertThat("INCREASE".equals(s.direction()) ? s.target() >= s.current() : s.target() <= s.current()).isTrue();
+        });
+    }
 
     private static Map<String, SuspensionWheel> susp(final double bottoming) {
         final var w = new SuspensionWheel(0.5, 0.8, bottoming, 0.0);

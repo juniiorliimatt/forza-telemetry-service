@@ -1,7 +1,9 @@
 package br.com.forza.exceptions.handler;
 
 import br.com.forza.exceptions.InvalidCursorException;
+import br.com.forza.exceptions.InvalidSetupException;
 import br.com.forza.exceptions.ResourceNotFoundException;
+import br.com.forza.exceptions.SetupConflictException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,18 @@ public class RestExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidCursorException.class)
     public ProblemDetail handleInvalidCursor(final InvalidCursorException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(InvalidSetupException.class)
+    public ProblemDetail handleInvalidSetup(final InvalidSetupException exception) {
+        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+        problem.setProperty("errors", exception.errors());
+        return problem;
+    }
+
+    @ExceptionHandler(SetupConflictException.class)
+    public ProblemDetail handleSetupConflict(final SetupConflictException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

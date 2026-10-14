@@ -45,6 +45,7 @@ public class TuningService {
 
     private final SessionRepository sessionRepository;
     private final TuningCheckpointRepository checkpointRepository;
+    private final CarSetupStore setupStore;
     private final TuningHistoryRepository historyRepository;
     private final TuningAggregator aggregator;
     private final TuningAdvisor advisor;
@@ -56,6 +57,7 @@ public class TuningService {
 
     public TuningService(final SessionRepository sessionRepository,
                          final TuningCheckpointRepository checkpointRepository,
+                         final CarSetupStore setupStore,
                          final TuningHistoryRepository historyRepository,
                          final TuningAggregator aggregator,
                          final TuningAdvisor advisor,
@@ -66,6 +68,7 @@ public class TuningService {
                          final Clock clock) {
         this.sessionRepository = sessionRepository;
         this.checkpointRepository = checkpointRepository;
+        this.setupStore = setupStore;
         this.historyRepository = historyRepository;
         this.aggregator = aggregator;
         this.advisor = advisor;
@@ -104,27 +107,34 @@ public class TuningService {
         final List<TuningCarDTO> cars = new ArrayList<>();
         for (final CarBuild build : builds) {
             final Instant since = checkpointRepository.find(GAME_FORMAT, build.carOrdinal(), build.performanceClass()).orElse(Instant.EPOCH);
-            final List<SessionMeta> window = closedByBuild.getOrDefault(build, List.of()).stream()
+            // Sem setup aceito pelo usuário a coleta não começou: nenhuma sessão conta, mas o carro aparece para ele poder conferir o setup.
+            final boolean confirmed = setupStore.find(build.carOrdinal(), build.performanceClass()).isPresent();
+            final List<SessionMeta> closed = closedByBuild.getOrDefault(build, List.of());
+            final List<SessionMeta> window = !confirmed ? List.of() : closed.stream()
                     .filter(s -> !s.startedAt().isBefore(since)).limit(properties.maxSessions()).toList();
             final SessionMeta open = activeByBuild.get(build);
-            final TuningCarDTO.ActiveSessionDTO active = open == null || open.startedAt().isBefore(since) ? null
+            final TuningCarDTO.ActiveSessionDTO active = !confirmed || open == null || open.startedAt().isBefore(since) ? null
                     : new TuningCarDTO.ActiveSessionDTO(open.sampleCount(), properties.sessionSamples(), open.startedAt());
-            if (window.isEmpty() && active == null) {
+            if (confirmed && window.isEmpty() && active == null) {
                 continue;
             }
-            final SessionMeta latest = window.isEmpty() ? open : window.get(0);
+            final SessionMeta latest = !window.isEmpty() ? window.get(0) : !closed.isEmpty() ? closed.get(0) : open;
             final long samples = window.stream().mapToLong(SessionMeta::sampleCount).sum();
             final boolean ready = window.size() >= properties.minSessions() && samples >= properties.minSamples();
             final boolean highConfidence = ready && isHighConfidence(window.size(), samples);
             cars.add(new TuningCarDTO(build.carOrdinal(), carName(latest), latest.carClass(), latest.performanceIndex(), build.performanceClass().name(),
                     SessionDTO.from(latest).drivetrain(), window.size(), samples, properties.minSessions(), properties.minSamples(), ready,
-                    highConfidence, properties.highMinSessions(), properties.highMinSamples(), latest.startedAt(), active));
+                    highConfidence, properties.highMinSessions(), properties.highMinSamples(), latest.startedAt(), active, confirmed));
         }
         cars.sort(Comparator.comparing(TuningCarDTO::lastSessionAt).reversed());
         return cars;
     }
 
     public TuningRecommendationDTO recommendation(final int carOrdinal, final PerformanceClass performanceClass) {
+        final Optional<CarSetupStore.CarSetup> setup = setupStore.find(carOrdinal, performanceClass);
+        if (setup.isEmpty()) {
+            return awaitingSetup(carOrdinal, performanceClass);
+        }
         final Optional<Instant> checkpoint = checkpointRepository.find(GAME_FORMAT, carOrdinal, performanceClass);
         final List<SessionMeta> metas = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, checkpoint.orElse(Instant.EPOCH),
                 properties.maxSessions());
@@ -136,7 +146,7 @@ public class TuningService {
                 throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
             }
             return new TuningRecommendationDTO(carOrdinal, carName(open), open.carClass(), open.performanceIndex(), performanceClass.name(),
-                    SessionDTO.from(open).drivetrain(), readiness(0, 0), null, null, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup());
+                    SessionDTO.from(open).drivetrain(), readiness(0, 0), null, null, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup(), true);
         }
         final List<TuningAggregator.SessionSummary> usable = new ArrayList<>();
         final List<SessionMeta> usableMetas = new ArrayList<>();
@@ -155,11 +165,30 @@ public class TuningService {
 
         if (!readiness.ready()) {
             return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(), drivetrain,
-                    readiness, windowFrom, windowTo, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup());
+                    readiness, windowFrom, windowTo, checkpoint.orElse(null), List.of(), List.of(), TuningBaseline.setup(), true);
         }
-        final TuningAdvisor.Advice advice = advisor.advise(aggregate, latest.drivetrain());
+        final TuningAdvisor.Advice advice = SetupTargets.apply(advisor.advise(aggregate, latest.drivetrain()), setup.get().values(), setup.get().ranges());
         return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(), drivetrain,
-                readiness, windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle(), TuningBaseline.setup());
+                readiness, windowFrom, windowTo, checkpoint.orElse(null), advice.guides(), advice.thisCycle(), TuningBaseline.setup(), true);
+    }
+
+    /**
+     * O usuário ainda não conferiu e aceitou o setup deste carro/classe: a coleta não começou, então nenhuma sessão conta e a
+     * recomendação é só a configuração inicial — o front leva ao formulário de setup. O carro precisa ter ao menos uma sessão
+     * (fechada ou em andamento) para existir na lista; sem nenhuma, 404 como sempre.
+     */
+    private TuningRecommendationDTO awaitingSetup(final int carOrdinal, final PerformanceClass performanceClass) {
+        final SessionMeta latest = sessionRepository.findClosedForTuning(GAME_FORMAT, carOrdinal, performanceClass, Instant.EPOCH, 1).stream().findFirst()
+                .orElseGet(() -> openSessionSince(carOrdinal, performanceClass, Instant.EPOCH));
+        if (latest == null) {
+            throw new ResourceNotFoundException("Nenhuma sessão coletada para o carro " + carOrdinal);
+        }
+        final TuningReadinessDTO base = readiness(0, 0);
+        final TuningReadinessDTO readiness = new TuningReadinessDTO(false, 0, base.requiredSessions(), 0, base.requiredSamples(), false,
+                base.highRequiredSessions(), base.highRequiredSamples(),
+                List.of("Confira o setup do carro e aceite os valores para começar a coleta."));
+        return new TuningRecommendationDTO(carOrdinal, carName(latest), latest.carClass(), latest.performanceIndex(), performanceClass.name(),
+                SessionDTO.from(latest).drivetrain(), readiness, null, null, null, List.of(), List.of(), TuningBaseline.setup(), false);
     }
 
     /**
@@ -202,7 +231,7 @@ public class TuningService {
         }
         return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(),
                 PerformanceClass.of(rec.performanceIndex()).name(), rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(),
-                rec.checkpointAt(), rec.guides(), rec.thisCycle(), rec.initialSetup());
+                rec.checkpointAt(), rec.guides(), rec.thisCycle(), rec.initialSetup(), rec.setupConfirmed());
     }
 
     /** Sessão em andamento desse carro/classe iniciada a partir de {@code since} (marco da coleta); nula se não houver. */
@@ -217,7 +246,8 @@ public class TuningService {
     /** A configuração inicial é fixa e só existe na tela ao vivo; a foto guarda só o que foi medido e recomendado. */
     private static TuningRecommendationDTO withoutInitialSetup(final TuningRecommendationDTO rec) {
         return new TuningRecommendationDTO(rec.carOrdinal(), rec.carName(), rec.carClass(), rec.performanceIndex(), rec.performanceClass(),
-                rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(), rec.checkpointAt(), rec.guides(), rec.thisCycle(), List.of());
+                rec.drivetrain(), rec.readiness(), rec.windowFrom(), rec.windowTo(), rec.checkpointAt(), rec.guides(), rec.thisCycle(), List.of(),
+                rec.setupConfirmed());
     }
 
     private void saveToHistory(final int carOrdinal, final PerformanceClass performanceClass) {

@@ -8,6 +8,7 @@ import java.time.Instant;
  *
  * @param ready nível inicial atingido (libera a recomendação); {@code highConfidence}: nível de ajuste fino atingido
  * @param activeSession sessão em andamento nessa build (ainda não conta no progresso), ou nulo
+ * @param setupConfirmed setup do carro conferido e aceito pelo usuário: só então a coleta conta sessões (sem ele, {@code sessions} é 0)
  */
 public record TuningCarDTO(int carOrdinal,
                            String carName,
@@ -24,7 +25,8 @@ public record TuningCarDTO(int carOrdinal,
                            int highRequiredSessions,
                            long highRequiredSamples,
                            Instant lastSessionAt,
-                           ActiveSessionDTO activeSession) {
+                           ActiveSessionDTO activeSession,
+                           boolean setupConfirmed) {
 
     /** Sessão sendo gravada agora: amostras já gravadas e o tamanho da sessão cheia (ao chegar nele, ela fecha e passa a contar). */
     public record ActiveSessionDTO(int samples, int targetSamples, Instant startedAt) {

@@ -107,6 +107,26 @@ class TuningBaselineTest {
     }
 
     @Test
+    void defaultValues_onlyUseKnownFields_andStayInsideTheGameLimits() {
+        TuningBaseline.defaultValues().forEach((key, value) -> {
+            final var field = SetupCatalog.find(key, SetupCatalog.MAX_GEARS).orElseThrow(() -> new AssertionError("campo desconhecido: " + key));
+            if (!field.perCar()) {
+                assertThat(value).as(key).isBetween(field.min(), field.max());
+            }
+        });
+    }
+
+    @Test
+    void defaultValues_followTheRecipe() {
+        assertThat(TuningBaseline.defaultValues()).containsEntry("brake_balance", 45.0).containsEntry("brake_pressure", 105.0)
+                .containsEntry("arb_front", 1.0).containsEntry("arb_rear", 65.0).containsEntry("spring_front", 80.0)
+                .containsEntry("rebound_front", 9.0).containsEntry("bump_front", 3.0).containsEntry("diff_accel_front", 100.0)
+                .containsEntry("diff_decel_front", 0.0).containsEntry("caster", 7.0);
+        assertThat(TuningBaseline.defaultValues().get("tire_pressure_front")).isBetween(1.5, 2.0);
+        assertThat(TuningBaseline.defaultValues()).doesNotContainKeys("final_drive", "gear_1", "downforce_front");
+    }
+
+    @Test
     void everyItemShowsAValueSomewhere() {
         assertThat(setup).flatExtracting(TuningSetupGroupDTO::items).allSatisfy(i ->
                 assertThat(i.value() != null || i.front() != null || i.rear() != null).isTrue());

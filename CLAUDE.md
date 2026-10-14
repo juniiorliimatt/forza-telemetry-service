@@ -67,8 +67,21 @@ detectado por `scripts/up-all.sh`), `GET /api/v1/sessions` (cursor), `/{id}`, `/
   limitador na última marcha, travamento > 5%, patinagem > 15%, balanço com diferença ≥ 20 pontos e ≥ 150 amostras).
 - **Sempre as 9 guias do jogo** (Pneus, Câmbio, Alinhamento, Barras, Molas, Amortecimento, Aerodinâmica, Freios,
   Diferencial) com status `ADJUST`/`OK`/`NO_SIGNAL`; no máximo **3 ajustes por ciclo, um por guia** (`thisCycle`).
-- **Só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição. Valores
-  absolutos exigem a skill com esses dados. Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
+- **Setup do carro informado pelo usuário** (`forza.car_setups`, `SetupCatalog`/`SetupService`/`SetupController`, rotas
+  `/tuning/cars/{ordinal}/{classe}/setup` GET/PUT/DELETE e `POST .../setup/apply`): o Data Out não traz o setup, então o
+  usuário o informa por carro+classe. `SetupCatalog` é o **catálogo único** de campos (chave, guia, eixo, unidade, mín/máx do
+  jogo; pressão sempre em bar; câmbio gera `gear_1..gear_N` pelo `gearCount`; molas e aerodinâmica são `perCar`: o usuário
+  informa o intervalo do slider em `ranges`) e serve à validação (422 com `errors`), ao formulário (limites no GET) e ao
+  advisor. **Sem setup aceito não há coleta**: `cars()` lista o carro com `setupConfirmed=false` e progresso zero,
+  `recommendation()` devolve só a configuração inicial com "confira e aceite o setup"; o GET devolve o rascunho
+  pré-preenchido com `TuningBaseline.defaultValues()` (`confirmed=false`). Aceitar (PUT) ou **mudar qualquer valor**
+  reinicia a coleta (`resetCollection` antes de gravar, para a foto do histórico usar os valores antigos); PUT sem mudança
+  não mexe nela. `SetupTargets` transforma o passo do advisor em `current → target` (`atual ± passo`, travado no mín/máx;
+  mola em pontos percentuais do curso) e, se o valor já está no limite (`atLimit`), tira a sugestão do ciclo e promove a
+  próxima. `apply` ("Apliquei") grava os alvos do ciclo como valores atuais e reinicia a coleta (409 sem setup aceito ou sem
+  alvo). Sugestões sem campo no catálogo (altura do solo, faixa de marchas) seguem só com o passo.
+- **Sem setup aceito, só direções** (aumentar/reduzir): o Data Out não traz os valores do setup, peso nem distribuição.
+  Quem aplica ajustes no jogo deve **reiniciar a coleta**, senão sessões do
   setup antigo contaminam a média. Aerodinâmica não tem sinal na telemetria (`NO_SIGNAL`).
 - **Matriz da skill coberta**: além dos limiares, o advisor cobre equilíbrio de freio (subesterço na entrada → para a
   traseira; sobresterço → para a dianteira, sem contradizer o travamento medido), diferencial central AWD (subesterço na

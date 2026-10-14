@@ -65,6 +65,9 @@ class RepositoriesIT {
     @Autowired
     private TuningHistoryRepository history;
 
+    @Autowired
+    private CarSetupRepository carSetups;
+
     private SessionMeta newSession(final Instant startedAt) {
         final var base = Fixtures.session(UUID.randomUUID(), 2, null);
         return new SessionMeta(base.id(), base.gameFormat(), 1234, 5, 800, 2, 8, 8000f, 1000f, 77, startedAt, null, 0, null);
@@ -352,6 +355,26 @@ class RepositoriesIT {
         assertThat(checkpoints.find("FH4/FH5/FH6", 777, PerformanceClass.S1)).as("outra classe do mesmo carro").isEmpty();
         assertThat(checkpoints.find("FM2023-Dash", 777, PerformanceClass.A)).isEmpty();
         assertThat(checkpoints.find("FH4/FH5/FH6", 778, PerformanceClass.A)).isEmpty();
+    }
+
+    @Test
+    void carSetups_upsertFindAndDeletePerCarClassAndFormat() {
+        final var at = Instant.parse("2026-10-13T12:00:00Z");
+        assertThat(carSetups.find("FH4/FH5/FH6", 888, PerformanceClass.A)).isEmpty();
+
+        carSetups.upsert(new CarSetupRepository.Entry("FH4/FH5/FH6", 888, PerformanceClass.A, 6, "{\"caster\":7.0}", "{\"spring_front\":{\"min\":20.0,\"max\":220.0}}", at));
+        carSetups.upsert(new CarSetupRepository.Entry("FH4/FH5/FH6", 888, PerformanceClass.A, 7, "{\"caster\":6.5}", "{}", at.plusSeconds(60)));
+
+        final var found = carSetups.find("FH4/FH5/FH6", 888, PerformanceClass.A).orElseThrow();
+        assertThat(found.gearCount()).isEqualTo(7);
+        assertThat(found.valuesJson()).contains("6.5");
+        assertThat(found.rangesJson()).isEqualTo("{}");
+        assertThat(found.confirmedAt()).isEqualTo(at.plusSeconds(60));
+        assertThat(carSetups.find("FH4/FH5/FH6", 888, PerformanceClass.S1)).as("outra classe do mesmo carro").isEmpty();
+
+        assertThat(carSetups.delete("FH4/FH5/FH6", 888, PerformanceClass.A)).isTrue();
+        assertThat(carSetups.delete("FH4/FH5/FH6", 888, PerformanceClass.A)).isFalse();
+        assertThat(carSetups.find("FH4/FH5/FH6", 888, PerformanceClass.A)).isEmpty();
     }
 
     @Test
