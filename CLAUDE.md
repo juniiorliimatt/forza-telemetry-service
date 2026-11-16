@@ -14,9 +14,8 @@
   os converte em authorities `MODULE_<CODIGO>` e o `SecurityConfig` responde **403** a quem
   está autenticado sem `MODULE_FORZA`. Todo teste de controller que stuba o introspector
   precisa incluir `MODULE_FORZA` nas authorities.
-- Autoria: padrão do monorepo é o desenvolvedor implementar; aqui há **permissão total
-  temporária** pro Claude ("Claude implementa tudo", 2026-10-03). Detalhes e limites em
-  [raiz → Divisão de responsabilidade](../CLAUDE.md#divisão-de-responsabilidade).
+- Autoria: **Claude Code**, como em todo o monorepo (ver [raiz → Divisão de
+  responsabilidade](../CLAUDE.md#divisão-de-responsabilidade)).
 - **Estado do repositório**: repo no GitLab (`sonar-group-oojuniiin/forza-telemetry-service`)
   e espelho no GitHub, registrado como submódulo do monorepo. CI com `test`,
   `contract-drift-check` e `build`; ainda **sem Sonar**.
